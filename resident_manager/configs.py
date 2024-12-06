@@ -1,6 +1,5 @@
-import pathlib
 import os
-
+import pathlib
 
 # db_path = pathlib.Path(os.getcwd()).resolve() / "store"
 
@@ -13,7 +12,7 @@ fl_name_dt_frmt: str = "%Y-%m-%d_%H-%M-%S"
 # UID format: YYYY001
 uid_length = 7
 
-## tables names
+# tables names
 
 residents_tbl = "residents_info"
 electricity_tbl = "electricity_readings"
@@ -29,22 +28,84 @@ date_cols_status_tbl = ["LastRentCalcDate", "LastElectricityCalcDate", "TransDat
 date_cols_residents_tbl = ["DateofAdmission", "DateofBirth", "RentStartDate"]
 date_cols_electricity_tbl = ["Date"]
 date_cols_transactions_tbl = ["TransDate", "RentThruDate"]
-date_cols_final_settlement_tbl = ["ExitDate", "LastRentCalcDate", "LastElectricityCalcDate" ]
-date_cols_rent_history_tbl = ["TransDate", "PrevElectricityCalcDate", "LastElectricityCalcDate", "PrevRentCalcDate", "LastRentCalcDate"]
+date_cols_final_settlement_tbl = [
+    "ExitDate",
+    "LastRentCalcDate",
+    "LastElectricityCalcDate",
+]
+date_cols_rent_history_tbl = [
+    "TransDate",
+    "PrevElectricityCalcDate",
+    "LastElectricityCalcDate",
+    "PrevRentCalcDate",
+    "LastRentCalcDate",
+]
 date_cols_logs_tbl = ["Date"]
 
 
 float_cols_residents_tbl = ["Rent", "Deposit"]
 float_cols_electricity_tbl = [
-        '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '101',
-       '102', '103', '104', '105', '106', '107', '108', '109', '110',
-       '111', '112', '113', '114', '115', '116', '117', '201', '202',
-       '203', '204', '205', '206', '207', '208', '209', '210', '211',
-       '212', '213', '214', '215', '216', '217',
-       "Meter_1_2A", "Meter_2_2B", "Meter_3_1A", "Meter_4_1B", "Meter_5_GA", "Meter_6_GB", "Meter_7_Basement", "Library", "Solar"
-       ]
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6",
+    "7",
+    "8",
+    "9",
+    "10",
+    "11",
+    "101",
+    "102",
+    "103",
+    "104",
+    "105",
+    "106",
+    "107",
+    "108",
+    "109",
+    "110",
+    "111",
+    "112",
+    "113",
+    "114",
+    "115",
+    "116",
+    "117",
+    "201",
+    "202",
+    "203",
+    "204",
+    "205",
+    "206",
+    "207",
+    "208",
+    "209",
+    "210",
+    "211",
+    "212",
+    "213",
+    "214",
+    "215",
+    "216",
+    "217",
+    "Meter_1_2A",
+    "Meter_2_2B",
+    "Meter_3_1A",
+    "Meter_4_1B",
+    "Meter_5_GA",
+    "Meter_6_GB",
+    "Meter_7_Basement",
+    "Library",
+    "Solar",
+]
 
-float_cols_transactions_tbl = ["RoomElectricityReading", "PrevDueAmount", "AdditionalCharges"]
+float_cols_transactions_tbl = [
+    "RoomElectricityReading",
+    "PrevDueAmount",
+    "AdditionalCharges",
+]
 
 
 uid_col = "EnrollmentID"
