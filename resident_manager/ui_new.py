@@ -926,3 +926,8 @@ def main():
             with col2:
                 if st.button("Cancel"):
                     st.session_state.undo_warning_displayed = False
+
+
+if __name__ == "__main__":
+    main()
+
