@@ -1,0 +1,19 @@
+# Ignore Excel files
+**/*.xls
+**/*.xlsx
+
+# Ignore Jupyter notebooks
+**/*.ipynb
+
+**/*.pyc
+
+**/.ipynb_checkpoints/
+
+*.ipynb_checkpoints/
+
+# Ignore __pycache__ directories
+**/__pycache__/
+
+
+**/*.db
+*.db
