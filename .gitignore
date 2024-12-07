@@ -2,6 +2,10 @@
 **/*.xls
 **/*.xlsx
 
+
+*.xlsx
+*.xls
+
 # Ignore Jupyter notebooks
 **/*.ipynb
 
