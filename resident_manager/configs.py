@@ -105,6 +105,13 @@ float_cols_transactions_tbl = [
     "RoomElectricityReading",
     "PrevDueAmount",
     "AdditionalCharges",
+    "PaymentReceived",
+    "Rent",
+    "Deposit",
+    "NewBedIDElectReading",
+    "NewRent",
+    "NewDeposit"
+
 ]
 
 

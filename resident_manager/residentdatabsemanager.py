@@ -23,9 +23,7 @@ class ResidentManager:
         input_df = (TransDate, BedID, EnrollmentID, RoomElectricityreading, TransType)
         """
 
-        valid_input = self.data_manager.prepare_and_validate_trans_input(
-            input_df
-        ).sort_values("TransDate")
+        valid_input = self.data_manager.prepare_and_validate_trans_input(input_df).sort_values("TransDate")
         for _, row in valid_input.iterrows():
             if row["TransType"] == "exit":
                 res = self._process_resident_exit(row=row, log_comments=log_comments)
@@ -259,6 +257,30 @@ class ResidentManager:
         ] = new_meter_reading
         self.data_manager.update_current_status(new_status=curr_status)
 
+        return
+
+    @log_and_backup()
+    def record_payment(self, row: pd.Series, log_comments: Optional[str] = None):
+        valid_input = self.data_manager.prepare_validate_payment(row)
+        curr_status = self.data_manager.load_current_status()
+        prev_due = curr_status.loc[curr_status[self.uid] == valid_input[self.uid], "PrevDueAmount"].squeeze()
+
+        curr_status.loc[curr_status[self.uid] == valid_input[self.uid], "PrevDueAmount"] = prev_due - valid_input["PaymentAmount"]
+        self.data_manager.update_current_status(new_status=curr_status)
+
+        transaction = self.data_manager.load_transactions_table()
+        transaction = pd.DataFrame(columns=transaction.columns)
+        data = {
+            "TransDate": valid_input["TransDate"],
+            f"{self.uid}": valid_input[self.uid],
+            f"{self.bed_id}": valid_input[self.bed_id],
+            f"{self.room_id}": valid_input[self.room_id],
+            "PaymentReceived": valid_input["PaymentAmount"],
+            "TransType": "Payment",
+            "Comments": valid_input["Comments"]
+        }
+        transaction = pd.concat([transaction, pd.DataFrame([data])])
+        self.data_manager.insert_transaction(input_df=transaction)
         return
 
     def calculate_rent(

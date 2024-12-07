@@ -421,9 +421,9 @@ class DataManager:
         return
 
     def insert_transaction(self, input_df: pd.DataFrame):
-        valid_input = self.prepare_and_validate_trans_input(input_df)
+        # valid_input = self.prepare_and_validate_trans_input(input_df)
         self.db_handler.insert_records(
-            self.confs.transactions_tbl, valid_input, if_exists="append"
+            self.confs.transactions_tbl, input_df, if_exists="append"
         )
 
     def insert_final_settlement_record(self, input_df: pd.DataFrame):
@@ -535,7 +535,7 @@ class DataManager:
         data: pd.DataFrame,
         str_cols: Sequence[str],
         allow_duplicates: bool = False,
-        allow_nan: bool = False,
+        allow_nan_cols: Optional[list[str]] = None,
     ) -> None:
         """
         If allow_duplicates is False it checks each column in cols_name individually to check if they have duplicates
@@ -543,6 +543,13 @@ class DataManager:
 
         if isinstance(str_cols, str):
             str_cols = [str_cols]
+
+        if allow_nan_cols:
+            if isinstance(allow_nan_cols, str):
+                allow_nan_cols = [allow_nan_cols]
+
+        if allow_nan_cols is None:
+            allow_nan_cols = []
 
         missing_cols = [col for col in str_cols if col not in data.columns]
         if missing_cols:
@@ -559,9 +566,10 @@ class DataManager:
         if any((data[str_cols] == "").any(axis=0)):
             raise ValueError(f"Empty string '' found in id_col: {str_cols} in input_df")
 
-        if not allow_nan:
-            if any(data[str_cols].isna().any(axis=0)):
-                raise ValueError(f"Nan in the input_df id cols:{str_cols}")
+        check_nan_cols = set(str_cols) - set(allow_nan_cols)
+        if check_nan_cols:
+            if any(data[check_nan_cols].isna().any(axis=0)):
+                raise ValueError(f"Nan in the input_df id cols:{check_nan_cols}")
 
         if not allow_duplicates:
             duplicates = [
@@ -577,12 +585,19 @@ class DataManager:
         self,
         data: pd.DataFrame,
         float_cols: Sequence[str],
-        allow_nan: bool = True,
+        allow_nan_cols: Optional[list[str]] = None,
         allow_zero: bool = False,
     ) -> None:
 
         if isinstance(float_cols, str):
             float_cols = [float_cols]
+
+        if allow_nan_cols:
+            if isinstance(allow_nan_cols, str):
+                allow_nan_cols = [allow_nan_cols]
+
+        if allow_nan_cols is None:
+            allow_nan_cols = []
 
         missing_cols = [col for col in float_cols if col not in data.columns]
         if missing_cols:
@@ -596,9 +611,10 @@ class DataManager:
         if not_float:
             raise ValueError(f"Data type of the columns: ({not_float}) is not float")
 
-        if not allow_nan:
-            if any(data[float_cols].isna().any(axis=0)):
-                raise ValueError(f"Nan in the input_df for float cols:{float_cols}")
+        check_nan_cols = set(float_cols) - set(allow_nan_cols)
+        if check_nan_cols:
+            if any(data[check_nan_cols].isna().any(axis=0)):
+                raise ValueError(f"Nan in the input_df for float cols:{check_nan_cols}")
 
         if not allow_zero:
             is_zero = [col for col in float_cols if any((data[col] == 0))]
@@ -715,10 +731,10 @@ class DataManager:
         )
 
         self.string_colum_checks(
-            data=data, str_cols=[self.uid], allow_nan=False, allow_duplicates=False
+            data=data, str_cols=[self.uid], allow_nan_cols=None, allow_duplicates=False
         )
         self.float_colum_checks(
-            data=data, float_cols=float_cols, allow_nan=False, allow_zero=False
+            data=data, float_cols=float_cols, allow_nan_cols=None, allow_zero=False
         )
         self.check_valid_bedID(
             data[self.bed_id].values.tolist(), valid_ids=self.confs.valid_bedIDs
@@ -757,7 +773,7 @@ class DataManager:
             input_df=data, date_cols=date_cols, float_cols=float_cols, str_cols=str_cols
         )
         self.float_colum_checks(
-            data=data, float_cols=float_cols, allow_nan=False, allow_zero=True
+            data=data, float_cols=float_cols, allow_zero=True
         )
         self.date_colum_checks(
             data=data,
@@ -798,7 +814,7 @@ class DataManager:
             input_df=data, date_cols=date_cols, float_cols=float_cols, str_cols=str_cols
         )
         self.string_colum_checks(
-            data=data, str_cols=str_cols, allow_duplicates=True, allow_nan=False
+            data=data, str_cols=str_cols, allow_duplicates=True
         )
 
         self.date_colum_checks(
@@ -812,7 +828,7 @@ class DataManager:
             raise ValueError("Columns RentThruDate not found in transaction data")
 
         self.float_colum_checks(
-            data=data, float_cols=float_cols, allow_nan=False, allow_zero=True
+            data=data, float_cols=float_cols, allow_zero=True
         )
         self.check_valid_bedID(
             data[self.bed_id].values.tolist(), valid_ids=self.confs.valid_bedIDs
@@ -851,6 +867,31 @@ class DataManager:
             raise ValueError("Duplicated UIDs exist at occupying beds in Status")
 
         return data.sort_values([self.room_id], key=lambda x: x.astype(int))
+
+    def prepare_validate_payment(self, row: pd.Series):
+
+        curr_status = self.load_current_status()
+
+        mandatory_cols = [self.uid, self.bed_id, "TransDate", "PaymentAmount", "Comments"]
+        not_available = [col for col in mandatory_cols if col not in row.index]
+        if not_available:
+            raise ValueError(f"Column missing from data {not_available}")
+
+        if self.room_id not in row.index:
+            row[f"{self.room_id}"] = pd.Series(row[self.bed_id]).str.replace(r"\D", "", regex=True).iloc[0]
+
+        row["TransDate"] = pd.to_datetime(row["TransDate"])
+        row["PaymentAmount"] = pd.to_numeric(row["PaymentAmount"], errors="coerce")
+
+        if pd.isna(row["PaymentAmount"]):
+            ValueError("Cannot have nan in Payment Amount")
+
+        if row[f"{self.uid}"] not in curr_status[self.uid].values:
+            raise ValueError("cannot accept a payment for a resident who is not staying")
+
+        return row
+
+
 
     def prepare_validate_final_setllement(self):
         pass
