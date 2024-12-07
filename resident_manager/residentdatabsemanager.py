@@ -172,6 +172,7 @@ class ResidentManager:
                     self.bed_id,
                     "RoomElectricityReading",
                     "LastElectricityCalcDate",
+                    "TransDate"
                 ]
             ]
             curr_status.loc[
@@ -186,6 +187,10 @@ class ResidentManager:
             ).squeeze()
             row_df["LastRentCalcDate"] = last_rent_calc_dt - dt.timedelta(days=1)
             row_df["LastElectricityCalcDate"] = row["TransDate"]
+
+            for col in ["PrevDueAmount", "AdditionalCharges"]:
+                if col not in row_df.columns:
+                    row[col] = 0
             # Updating new entry alredy staying
             curr_status = pd.concat(
                 [curr_status, row_df[curr_status.columns]]
@@ -342,31 +347,34 @@ class ResidentManager:
             occupied_beds["RentDays"] * occupied_beds["Rent"] / monthly_factor
         )
         occupied_beds["TotalAmountDue"] = (
-            occupied_beds["RentDue"] + occupied_beds["ElectricityCharges"]
+            occupied_beds["RentDue"]
+            + occupied_beds["ElectricityCharges"]
+            + occupied_beds["PrevDueAmount"]
+            + occupied_beds["AdditionalCharges"]
         )
         occupied_beds["PrevRentCalcDate"] = occupied_beds["LastRentCalcDate"]
         occupied_beds["LastRentCalcDate"] = eom_rent_calc_date
 
         # Chaning qppropiate columns in the empty beds
         empty_beds["LastElectricityCalcDate"] = eom_rent_calc_date
-        empty_beds = empty_beds.merge(
-            latest_elect, left_on=self.room_id, right_index=True, how="left"
-        )
+        empty_beds = empty_beds.merge(latest_elect, left_on=self.room_id, right_index=True, how="left")
         empty_beds["RoomElectricityReading"] = empty_beds["EOMElectReading"]
 
-        new_status = pd.concat(
-            [empty_beds[curr_status.columns], occupied_beds[curr_status.columns]]
-        )
+        # Creating Full report
         report = pd.concat([occupied_beds, empty_beds])
         report = report[rent_history.columns]
-        report[self.confs.date_cols_rent_history_tbl] = report[
-            self.confs.date_cols_rent_history_tbl
-        ].apply(lambda x: x.dt.strftime("%d-%b-%Y"))
+        report[self.confs.date_cols_rent_history_tbl] = report[self.confs.date_cols_rent_history_tbl].apply(lambda x: x.dt.strftime("%d-%b-%Y"))
+
+        # Updating PrevDue and additional charges for new status
+        occupied_beds["PrevDueAmount"] = occupied_beds["TotalAmountDue"]
+        occupied_beds["AdditionalCharges"] = 0
+
+        # new status
+        new_status = pd.concat([empty_beds, occupied_beds])
+        new_status = new_status[curr_status.columns]
 
         if update_and_save:
-            self.update_and_save_rent_calculation(
-                new_status=new_status, rent_history=report
-            )
+            self.update_and_save_rent_calculation(new_status=new_status, rent_history=report)
 
         return report
 
