@@ -96,7 +96,8 @@ class ResidenceManagementStreamlit:
         log_comments = st.text_input("Log comments for this Activity")
         if st.button("Submit Admission"):
             try:
-                self.db_manager.data_manager.insert_resident_record(input_df=data, log_comments=log_comments)
+                with st.spinner("Processing Admission, please wait"):
+                    self.db_manager.data_manager.insert_resident_record(input_df=data, log_comments=log_comments)
                 st.success("Admission processed successfully.")
             except Exception as e:
                 st.error(f"Error: {e}")
@@ -163,7 +164,8 @@ class ResidenceManagementStreamlit:
         log_comments = st.text_input("Log comments for this Activity")
         if st.button("Submit Readings"):
             try:
-                self.db_manager.data_manager.insert_electricity_record(input_df=data, log_comments=log_comments)
+                with st.spinner("Processing, please wait"):
+                    self.db_manager.data_manager.insert_electricity_record(input_df=data, log_comments=log_comments)
                 st.success("Electricity reading inserted successfully.")
             except Exception as e:
                 st.error(f"Error: {e}")
@@ -247,7 +249,8 @@ class ResidenceManagementStreamlit:
             log_comments = st.text_input("Log comments for this Activity")
             if st.button("Update"):
                 try:
-                    self.db_manager.data_manager.edit_resident_record(input_df=updated_data_df, log_comments=log_comments)
+                    with st.spinner("Processing, please wait"):
+                        self.db_manager.data_manager.edit_resident_record(input_df=updated_data_df, log_comments=log_comments)
                     st.success("Resident record successfully updated in the database.")
                     st.session_state.resident_data = None
                 except Exception as e:
@@ -340,7 +343,8 @@ class ResidenceManagementStreamlit:
             log_comments = st.text_input("Log comments for this Activity")
             if st.button("Update"):
                 try:
-                    self.db_manager.data_manager.edit_electricity_record(input_df=updated_data_df, log_comments=log_comments)
+                    with st.spinner("Processing Admission, please wait"):
+                        self.db_manager.data_manager.edit_electricity_record(input_df=updated_data_df, log_comments=log_comments)
                     st.success("Electricity Record updated successfully.")
                     st.session_state.prev_record = None
                 except Exception as e:
@@ -827,7 +831,8 @@ class ResidenceManagementStreamlit:
         if not error:
             if st.button("Process Payment"):
                 try:
-                    self.db_manager.record_payment(row=pd.Series(data), log_comments=log_comments)
+                    with st.spinner("Processing, please wait"):
+                        self.db_manager.record_payment(row=pd.Series(data), log_comments=log_comments)
                     st.success("Payment processed Successfully")
                 except Exception as e:
                     st.error(f"Error Updating electricity record {e}")
@@ -836,8 +841,8 @@ class ResidenceManagementStreamlit:
     def create_copy(self):
         st.subheader("Create a copy of the current databse in use.")
         if st.button("Create a copy"):
-
-            self.db_manager.db_handler.copy_and_refresh_db()
+            with st.spinner("Processing, please wait"):
+                self.db_manager.db_handler.copy_and_refresh_db()
             st.success("Successfully created a copy of the databse. Please refresh")
 
 
