@@ -463,7 +463,8 @@ class ResidenceManagementStreamlit:
         log_comments = st.text_input("Log comments for this Activity")
         if st.button("Process Transaction"):
             try:
-                exit_details = self.db_manager.process_transaction(input_df=data_df, log_comments=log_comments)
+                with st.spinner("Processing transaction, please wait..."):
+                    exit_details = self.db_manager.process_transaction(input_df=data_df, log_comments=log_comments)
                 st.success(f"{trans_type} Transaction processed Successfully")
                 if exit_details is not None:
                     st.dataframe(exit_details.T)
@@ -583,8 +584,9 @@ class ResidenceManagementStreamlit:
         if not error:
             if st.button("Process Transfer"):
                 try:
-                    # pd.DataFrame([data]).to_csv("temp_room_trnsfer.csv", index=False)
-                    self.db_manager.process_room_transfers(input_df=pd.DataFrame([data]))
+                    with st.spinner("Processing transfer, please wait..."):
+                        # pd.DataFrame([data]).to_csv("temp_room_trnsfer.csv", index=False)
+                        self.db_manager.process_room_transfers(input_df=pd.DataFrame([data]))
                     st.success("Transfer successfully processed")
                 except Exception as e:
                     st.error(f"Error: {e}")

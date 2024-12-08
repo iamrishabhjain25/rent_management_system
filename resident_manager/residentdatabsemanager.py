@@ -171,6 +171,7 @@ class ResidentManager:
         room_prev_vals["LastElectricityCalcDate"] = room_prev_vals["TransDate"]
         return room_prev_vals
 
+    @log_and_backup()
     def process_room_transfers(self, input_df: pd.DataFrame):
 
         if not len(input_df) == 1:
@@ -214,7 +215,7 @@ class ResidentManager:
             "NewRent": input_row["SourceResidentNewRent"],
             "NewDeposit": input_row["SourceResidentNewDeposit"],
         }
-        exit_details = self._process_resident_exit(row=pd.Series(data))
+        exit_details = self._process_resident_exit(row=pd.Series(data), copy_db=False)
         data["TransType"] = "Room Transfer"
 
         return exit_details, pd.DataFrame([data])
@@ -241,7 +242,7 @@ class ResidentManager:
             "NewRent": input_row["DestinationResidentNewRent"],
             "NewDeposit": input_row["DestinationResidentNewDeposit"],
         }
-        exit_details = self._process_resident_exit(row=pd.Series(data))
+        exit_details = self._process_resident_exit(row=pd.Series(data), copy_db=False)
         data["TransType"] = "Room Transfer"
         return exit_details, pd.DataFrame([data])
 
@@ -259,7 +260,7 @@ class ResidentManager:
             "Comments": input_row["Comments"],
             "LastRentCalcDate": input_row["TransDate"],
         }
-        return self._process_resident_entry(row=pd.Series(data))
+        return self._process_resident_entry(row=pd.Series(data), copy_db=False)
 
     def _entry_in_source(self, input_row: pd.Series, desti_exit_details: pd.DataFrame):
         data = {
@@ -276,7 +277,7 @@ class ResidentManager:
             "LastRentCalcDate": input_row["TransDate"],
         }
 
-        return self._process_resident_entry(row=pd.Series(data))
+        return self._process_resident_entry(row=pd.Series(data), copy_db=False)
 
     @log_and_backup()
     def room_meter_change(

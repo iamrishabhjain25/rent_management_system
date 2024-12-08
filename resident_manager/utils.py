@@ -11,10 +11,10 @@ from typing import Any, Literal, Optional, Sequence
 import configs
 import numpy as np
 import pandas as pd
+import inspect
 
 
 def log_and_backup(
-    copy_db: bool = True,
     date_format="%Y-%m-%d_%H-%M-%S",
     bed_id_col: str = "BedID",
     uid_col: str = "EnrollmentID",
@@ -31,7 +31,17 @@ def log_and_backup(
             input_df = kwargs.get("input_df", None)
             data = row if (row is not None) else input_df
             room = kwargs.get("room", None)
+
+            if func.__name__ == "copy_and_refresh_db":
+                kwargs["copy_db"] = False
+
             comments = kwargs.get("log_comments", "")
+            copy_db = kwargs.pop("copy_db", True)
+
+            # Checking target func signature and only passing valid kwargs
+            sig = inspect.signature(func)
+            valid_params = sig.parameters
+            filtered_kwargs = {k: v for k, v in kwargs.items() if k in valid_params}
 
             bed_ids, rooms, uids, errors = "", "", "", ""
             if data is not None:
@@ -73,7 +83,7 @@ def log_and_backup(
             logs["DB_After"] = log_new_db
 
             try:
-                result = func(self, *args, **kwargs)
+                result = func(self, *args, **filtered_kwargs)
                 data_manager.insert_log(input_df=pd.DataFrame([logs]))
 
                 return result
@@ -113,7 +123,7 @@ class DatabaseHandler:
         if not db_list:
             raise FileNotFoundError("No database files found in the directory")
 
-        dt_filename_dict = {file[-len(rand_dt) :]: f"{file}{self.db_extension}" for file in db_list}
+        dt_filename_dict = {file[-len(rand_dt):]: f"{file}{self.db_extension}" for file in db_list}
 
         if not dt_filename_dict:
             raise ValueError("No database files matching the expected pattern found")
@@ -175,7 +185,7 @@ class DatabaseHandler:
 
         return
 
-    @log_and_backup(copy_db=False)
+    @log_and_backup()
     def copy_and_refresh_db(self, date_format="%Y-%m-%d_%H-%M-%S"):
         time.sleep(1.2)
         copy_time = dt.datetime.now()
