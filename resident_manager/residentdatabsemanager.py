@@ -158,9 +158,7 @@ class ResidentManager:
 
         exiting_record = None
         if adj_type == "exit":
-            exiting_record = room_prev_vals[
-                room_prev_vals[self.uid] == row[self.uid]
-            ].copy()
+            exiting_record = room_prev_vals[room_prev_vals[self.uid] == row[self.uid]].copy()
             cols_to_chng = [
                 col
                 for col in curr_status.columns
@@ -180,19 +178,15 @@ class ResidentManager:
         if adj_type == "entry":
             row_df = row.to_frame().T
             row_df["CumulativeElectConsumption"] = 0
-            last_rent_calc_dt = self.data_manager.load_residents_info_table(
-                filter_ids=[row[self.uid]], filter_cols=["RentStartDate"]
-            ).squeeze()
-            row_df["LastRentCalcDate"] = last_rent_calc_dt - dt.timedelta(days=1)
+            admission_date = self.data_manager.load_residents_info_table(filter_ids=[row[self.uid]], filter_cols=["RentStartDate"]).squeeze()
+            row_df["LastRentCalcDate"] = row["LastRentCalcDate"] if "LastRentCalcDate" in row.index else (admission_date - dt.timedelta(days=1))
             row_df["LastElectricityCalcDate"] = row["TransDate"]
 
             for col in ["PrevDueAmount", "AdditionalCharges"]:
                 if col not in row_df.columns:
-                    row[col] = 0
+                    row[col] = 0.0
             # Updating new entry alredy staying
-            curr_status = pd.concat(
-                [curr_status, row_df[curr_status.columns]]
-            ).drop_duplicates(subset=[self.bed_id], keep="last")
+            curr_status = pd.concat([curr_status, row_df[curr_status.columns]]).drop_duplicates(subset=[self.bed_id], keep="last")
 
         self.data_manager.update_current_status(new_status=curr_status)
         return exiting_record
@@ -229,6 +223,111 @@ class ResidentManager:
         ]
         room_prev_vals["LastElectricityCalcDate"] = room_prev_vals["TransDate"]
         return room_prev_vals
+
+    def process_room_transfers(self, input_df: pd.DataFrame):
+
+        if not len(input_df) == 1:
+            raise ValueError("Currently only allowing one transaction at a time")
+
+        valid_data = self.data_manager.prepare_validate_room_transfer_input(input_df=input_df).sort_values("TransDate")
+
+        for _, row in valid_data.iterrows():
+            src_exit, transaction_src = self._source_room_exit(input_row=row)
+            if row["IsSwapping"]:
+                desti_exit, transaction_des = self._destination_room_exit(input_row=row)
+
+            _ = self._entry_in_destination(input_row=row, src_exit_details=src_exit)
+            if row["IsSwapping"]:
+                _ = self._entry_in_source(input_row=row, desti_exit_details=desti_exit)
+
+            self.data_manager.insert_transaction(transaction_src)
+            if row["IsSwapping"]:
+                self.data_manager.insert_transaction(transaction_des)
+        return _
+
+    def _source_room_exit(self, input_row: pd.Series):
+        data = {
+            "TransDate": input_row["TransDate"],
+            "RentThruDate": input_row["TransDate"],
+            f"{self.bed_id}": input_row["SourceBedId"],
+            f"{self.uid}": input_row["SourceEnrollmentID"],
+            f"{self.room_id}": input_row["SourceRoomNo"],
+            "RoomElectricityReading": input_row["SourceElectReading"],
+            "TransType": "exit",
+            "PrevDueAmount": self.data_manager.load_current_status(filter_bedId=input_row["SourceBedId"], filter_cols="PrevDueAmount").squeeze(),
+            "AdditionalCharges": self.data_manager.load_current_status(filter_bedId=input_row["SourceBedId"], filter_cols="AdditionalCharges").squeeze(),
+            "Comments": input_row["Comments"],
+            "PaymentReceived": np.nan,
+            "Rent": input_row["SourceResidentOldRent"],
+            "Deposit": input_row["SourceResidentOldDeposit"],
+            "NewBedID": input_row["DestinationBedId"],
+            "NewBedIDElectReading": input_row["DestinationElectReading"],
+            "NewRent": input_row["SourceResidentNewRent"],
+            "NewDeposit": input_row["SourceResidentNewDeposit"]
+
+
+        }
+        exit_details = self._process_resident_exit(row=pd.Series(data))
+        data["TransType"] = "Room Transfer"
+
+        return exit_details, pd.DataFrame([data])
+
+    def _destination_room_exit(self, input_row: pd.Series):
+        data = {
+            "TransDate": input_row["TransDate"],
+            "RentThruDate": input_row["TransDate"],
+            f"{self.bed_id}": input_row["DestinationBedId"],
+            f"{self.uid}": input_row["DestinationEnrollmentID"],
+            f"{self.room_id}": input_row["DestinationRoomNo"],
+            "RoomElectricityReading": input_row["DestinationElectReading"],
+            "TransType": input_row["TransType"],
+            "PrevDueAmount": self.data_manager.load_current_status(filter_bedId=input_row["DestinationBedId"], filter_cols="PrevDueAmount").squeeze(),
+            "AdditionalCharges": self.data_manager.load_current_status(filter_bedId=input_row["DestinationBedId"], filter_cols="AdditionalCharges").squeeze(),
+            "Comments": input_row["Comments"],
+            "PaymentReceived": np.nan,
+            "Rent": input_row["DestinationResidentOldRent"],
+            "Deposit": input_row["DestinationResidentOldDeposit"],
+            "NewBedID": input_row["SourceBedId"],
+            "NewBedIDElectReading": input_row["SourceElectReading"],
+            "NewRent": input_row["DestinationResidentNewRent"],
+            "NewDeposit": input_row["DestinationResidentNewDeposit"]
+        }
+        exit_details = self._process_resident_exit(row=pd.Series(data))
+        data["TransType"] = "Room Transfer"
+        return exit_details, pd.DataFrame([data])
+
+    def _entry_in_destination(self, input_row: pd.Series, src_exit_details: pd.DataFrame):
+        data = {
+            "TransDate": input_row["TransDate"],
+            "RentThruDate": np.nan,
+            f"{self.bed_id}": input_row["DestinationBedId"],
+            f"{self.uid}": input_row["SourceEnrollmentID"],
+            f"{self.room_id}": input_row["DestinationRoomNo"],
+            "RoomElectricityReading": input_row["DestinationElectReading"],
+            "TransType": "entry",
+            "PrevDueAmount": (src_exit_details["TotalAmountDue"] - src_exit_details["AdditionalCharges"]).squeeze(),
+            "AdditionalCharges": src_exit_details["AdditionalCharges"].squeeze(),
+            "Comments": input_row["Comments"],
+            "LastRentCalcDate": input_row["TransDate"]
+        }
+        return self._process_resident_entry(row=pd.Series(data))
+
+    def _entry_in_source(self, input_row: pd.Series, desti_exit_details: pd.DataFrame):
+        data = {
+            "TransDate": input_row["TransDate"],
+            "RentThruDate": np.nan,
+            f"{self.bed_id}": input_row["SourceBedId"],
+            f"{self.uid}": input_row["DestinationEnrollmentID"],
+            f"{self.room_id}": input_row["SourceRoomNo"],
+            "RoomElectricityReading": input_row["SourceElectReading"],
+            "TransType": "entry",
+            "PrevDueAmount": (desti_exit_details["TotalAmountDue"] - desti_exit_details["AdditionalCharges"]).squeeze(),
+            "AdditionalCharges": desti_exit_details["AdditionalCharges"].squeeze(),
+            "Comments": input_row["Comments"],
+            "LastRentCalcDate": input_row["TransDate"]
+        }
+
+        return self._process_resident_entry(row=pd.Series(data))
 
     @log_and_backup()
     def room_meter_change(

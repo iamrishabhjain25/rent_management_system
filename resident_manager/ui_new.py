@@ -617,6 +617,128 @@ class ResidenceManagementStreamlit:
                 st.error(f"Error Updating electricity record {e}")
                 st.code(traceback.format_exc())
 
+    def room_transfer(self):
+        st.subheader("Room Transfers")
+
+        # Fetch data
+        curr_status = self.db_manager.data_manager.load_current_status().reset_index()
+        residents_info = self.db_manager.data_manager.load_residents_info_table()
+        occupied_beds = self.db_manager.data_manager.get_occupied_beds()
+        empty_beds = self.db_manager.data_manager.get_empty_beds()
+
+        # Instructions for the user
+        # st.info("If Swapping, select occupied beds for both 'From BedID' and 'To BedID'. "
+        #         "If moving to an empty bed, select only empty beds in 'To BedID'.")
+
+        trans_type = st.selectbox("Type of Transfer", ["Moving to Empty Bed", "Swapping"])
+        swap = True if trans_type == "Swapping" else False
+
+        # Transfer Date and Time Inputs
+        trans_dt = st.date_input("Room Change/Transfer Date", value=datetime.now().date(), format="DD-MM-YYYY")
+        trans_time = st.time_input("Enter Change/Transfer Time")
+        trans_dt_time = datetime.combine(trans_dt, trans_time)
+
+        error = ""
+        # Error checking for future date
+        if trans_dt_time > datetime.now():
+            error += "Invalid DateTime: Cannot accept future date/time for the transaction."
+            st.error("Invalid DateTime: Cannot accept future date/time for the transaction.")
+
+        # Source Bed Information
+        st.subheader("Source Bed Information")
+        source_bed_id = st.selectbox("Source (From) BedID", occupied_beds)
+        prev_src_reading = curr_status.loc[curr_status[self.db_manager.bed_id] == source_bed_id, "RoomElectricityReading"].squeeze()
+        source_elect = st.number_input("Source Room Reading", value=prev_src_reading)
+
+        if source_elect < prev_src_reading:
+            st.error("Source elect reading cannot be less than prev reading")
+            error += "| Source elect reading cannot be less than prev reading"
+
+        source_uid = curr_status.loc[curr_status[self.db_manager.bed_id] == source_bed_id, self.db_manager.uid].squeeze()
+        source_name = residents_info.loc[residents_info[self.db_manager.uid] == source_uid, "Name"].squeeze()
+        source_rent = residents_info.loc[residents_info[self.db_manager.uid] == source_uid, "Rent"].squeeze()
+        source_deposit = residents_info.loc[residents_info[self.db_manager.uid] == source_uid, "Deposit"].squeeze()
+
+        # Disabled input fields for resident information (read-only)
+        st.text_input(f"{self.db_manager.uid} of resident in {source_bed_id}", value=source_uid, disabled=True)
+        st.text_input(f"Name of resident in {source_bed_id}", value=source_name, disabled=True)
+        st.text_input(f"Current Rent of resident {source_name}", value=str(source_rent), disabled=True)
+        st.text_input(f"Current Deposit of resident {source_name}", value=str(source_deposit), disabled=True)
+
+        # Financial information adjustments
+        new_source_rent = st.number_input(f"Enter 'New' Rent for {source_name}", value=0)
+        new_source_deposit = st.number_input(f"Enter 'New' Deposit for {source_name}", value=0)
+
+        st.warning(f"Change in Rent -> {new_source_rent - source_rent:,.1f}")
+        st.warning(f"Change in Deposit -> {new_source_deposit - source_deposit:,.1f}")
+
+        # Destination Bed Information
+        st.subheader("Destination Bed Information")
+        desti_bed_options = occupied_beds if swap else empty_beds
+        desti_bed_id = st.selectbox("Destination (To) BedID", desti_bed_options)
+
+        prev_desti_reading = curr_status.loc[curr_status[self.db_manager.bed_id] == desti_bed_id, "RoomElectricityReading"].squeeze()
+        desti_elect = st.number_input("Destination Room Reading", value=prev_desti_reading)
+
+        if desti_elect < prev_desti_reading:
+            st.error("Destination elect reading cannot be less than prev reading")
+            error += "| Destination elect reading cannot be less than prev reading"
+
+        # If swapping, show the resident info for the destination bed
+        desti_uid, desti_rent, desti_deposit = np.nan, np.nan, np.nan
+        new_desti_rent, new_desti_deposit = np.nan, np.nan
+        if swap:
+            desti_uid = curr_status.loc[curr_status[self.db_manager.bed_id] == desti_bed_id, self.db_manager.uid].squeeze()
+            desti_name = residents_info.loc[residents_info[self.db_manager.uid] == desti_uid, "Name"].squeeze()
+            desti_rent = residents_info.loc[residents_info[self.db_manager.uid] == desti_uid, "Rent"].squeeze()
+            desti_deposit = residents_info.loc[residents_info[self.db_manager.uid] == desti_uid, "Deposit"].squeeze()
+
+            st.text_input(f"{self.db_manager.uid} of resident in {desti_bed_id}", value=desti_uid, disabled=True, key="1")
+            st.text_input(f"Name of resident in {desti_bed_id}", value=desti_name, disabled=True, key="2")
+            st.text_input(f"Current Rent of resident {desti_name}", value=str(desti_rent), disabled=True, key="3")
+            st.text_input(f"Current Deposit of resident {desti_name}", value=str(desti_deposit), disabled=True, key="4")
+
+            # Financial adjustment for destination resident
+            new_desti_rent = st.number_input(f"Enter 'New' Rent for {desti_name}", value=0, key="5")
+            new_desti_deposit = st.number_input(f"Enter 'New' Deposit for {desti_name}", value=0, key="6")
+
+            st.warning(f"Change in Rent -> {new_desti_rent - desti_rent:,.1f}")
+            st.warning(f"Change in Deposit -> {new_desti_deposit - desti_deposit:,.1f}")
+
+        comments = st.text_input("Comments")
+        data = {
+            "TransDate": trans_dt_time,
+            "TransType": trans_type,
+            "SourceBedId": source_bed_id,
+            "SourceEnrollmentID": source_uid,
+            "SourceElectReading": source_elect,
+            "SourceResidentOldRent": source_rent,
+            "SourceResidentNewRent": new_source_rent,
+            "SourceResidentOldDeposit": source_deposit,
+            "SourceResidentNewDeposit": new_source_deposit,
+            "DestinationBedId": desti_bed_id,
+            "DestinationEnrollmentID": desti_uid,
+            "DestinationElectReading": desti_elect,
+            "DestinationResidentOldRent": desti_rent,
+            "DestinationResidentNewRent": new_desti_rent,
+            "DestinationResidentOldDeposit": desti_deposit,
+            "DestinationResidentNewDeposit": new_desti_deposit,
+            "Comments": comments
+
+        }
+
+        if not error:
+            if st.button("Process Transfer"):
+                try:
+                    # pd.DataFrame([data]).to_csv("temp_room_trnsfer.csv", index=False)
+                    self.db_manager.process_room_transfers(input_df=pd.DataFrame([data]))
+                    st.success("Transfer successfully processed")
+                except Exception as e:
+                    st.error(f"Error: {e}")
+                    st.code(traceback.format_exc())
+
+        return
+
     def show_final_adjustment(self, exit_details):
         if not exit_details.empty:
             st.subheader("Final Adjustment")
@@ -865,13 +987,10 @@ class ResidenceManagementStreamlit:
             if st.button("Process Payment"):
                 try:
                     self.db_manager.record_payment(row=pd.Series(data), log_comments=log_comments)
-                    st.success(f"Payment processed Successfully")
+                    st.success("Payment processed Successfully")
                 except Exception as e:
                     st.error(f"Error Updating electricity record {e}")
                     st.code(traceback.format_exc())
-
-
-
 
     def create_copy(self):
         st.subheader("Create a copy of the current databse in use.")
@@ -900,6 +1019,8 @@ def main():
         "Update Resident Info",
         "Update Electricity Record",
         "Entry/Exit of Form",
+        "Room Transfer",
+        "View Current Tables",
         "Calculate Rent",
         "Record Payment",
         "Electricity Meter Change",
@@ -924,6 +1045,8 @@ def main():
         system.update_electricity_record()
     elif choice == "Entry/Exit of Form":
         system.record_activity()
+    elif choice == "Room Transfer":
+        system.room_transfer()
     elif choice == "View Current Tables":
         system.view_current_tables()
     elif choice == "Calculate Rent":
@@ -982,4 +1105,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

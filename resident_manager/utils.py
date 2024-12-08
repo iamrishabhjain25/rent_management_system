@@ -10,6 +10,7 @@ from typing import Any, Literal, Optional, Sequence
 import configs
 import numpy as np
 import pandas as pd
+import time
 
 
 def log_and_backup(
@@ -209,7 +210,7 @@ class DatabaseHandler:
 
     @log_and_backup(copy_db=False)
     def copy_and_refresh_db(self, date_format="%Y-%m-%d_%H-%M-%S"):
-        # time.sleep(1.2)
+        time.sleep(1.2)
         copy_time = dt.datetime.now()
         new_time = copy_time.strftime(date_format)
         old_path = self._current_db_in_use
@@ -380,11 +381,11 @@ class DataManager:
 
     def get_occupied_beds(self):
         status = self.load_current_status().reset_index()
-        return status.loc[status[self.uid].notna(), self.bed_id].values
+        return status.loc[status[self.uid].notna(), self.bed_id].tolist()
 
     def get_empty_beds(self):
         status = self.load_current_status().reset_index()
-        return status.loc[status[self.uid].isna(), self.bed_id].values
+        return status.loc[status[self.uid].isna(), self.bed_id].tolist()
 
     def load_logs(self):
         return self.db_handler.load_table(
@@ -891,10 +892,88 @@ class DataManager:
 
         return row
 
+    def prepare_validate_room_transfer_input(self, input_df) -> pd.DataFrame:
 
+        current_status = self.load_current_status()
+        residents_info = self.load_residents_info_table()
+
+        date_cols = ["TransDate"]
+        float_cols = [
+            "SourceElectReading", "SourceResidentOldRent", "SourceResidentNewRent",
+            "SourceResidentOldDeposit", "SourceResidentNewDeposit",
+            "DestinationElectReading", "DestinationResidentOldRent",
+            "DestinationResidentNewRent", "DestinationResidentOldDeposit",
+            "DestinationResidentNewDeposit"
+        ]
+        str_cols = [
+            "TransType", "SourceBedId", "SourceEnrollmentID",
+            "DestinationBedId", "DestinationEnrollmentID", "Comments"
+        ]
+
+        input_df = self.convert_data_types(
+            input_df=input_df, date_cols=date_cols, float_cols=float_cols, str_cols=str_cols
+        )
+
+        input_df["SourceRoomNo"] = input_df["SourceBedId"].str.replace(r"\D", "", regex=True)
+        input_df["DestinationRoomNo"] = input_df["DestinationBedId"].str.replace(r"\D", "", regex=True)
+        input_df["IsSwapping"] = np.where(input_df["TransType"] == "Swapping", True, False)
+
+        for _, row in input_df.iterrows():
+            source_bed = row["SourceBedId"]
+            destination_bed = row["DestinationBedId"]
+            transfer_type = row["TransType"]
+            swap = row["IsSwapping"]
+
+            self.check_valid_bedID(bed_id=[source_bed, destination_bed], valid_ids=self.confs.valid_bedIDs)
+
+            if source_bed == destination_bed:
+                raise ValueError("Source and Destination Bed IDs cannot be the same.")
+
+            if row["TransDate"] > dt.datetime.now():
+                raise ValueError("Transfer date cannot be in the future.")
+
+            prev_src_reading = current_status.loc[current_status[self.bed_id] == source_bed, "RoomElectricityReading"].squeeze()
+            if (row["SourceElectReading"] < prev_src_reading) or (pd.isna(row["SourceElectReading"])):
+                raise ValueError("Source electricity reading cannot be less than the previous reading or cannot be nan.")
+
+            prev_dest_reading = current_status.loc[current_status[self.bed_id] == destination_bed, "RoomElectricityReading"].squeeze()
+            if (row["DestinationElectReading"] < prev_dest_reading) or (pd.isna(row["DestinationElectReading"])):
+                raise ValueError("Destination electricity reading cannot be less than the previous reading.")
+
+            if transfer_type not in ["Moving to Empty Bed", "Swapping"]:
+                raise ValueError(f"Invalid TransferType: {transfer_type}")
+
+            if not swap and not pd.isna(row["DestinationEnrollmentID"]):
+                raise ValueError(
+                    "Destination Enrollment ID should not be provided when moving to an empty bed. "
+                    f"Found: {row['DestinationEnrollmentID']}"
+                )
+
+            if swap and not row["DestinationEnrollmentID"]:
+                raise ValueError("Destination Enrollment ID is required when swapping.")
+
+            src_rent_deposit = residents_info.loc[residents_info[self.uid] == row["SourceEnrollmentID"], ["Rent", "Deposit"]].squeeze().values
+            src_input_rent_deposit = row[["SourceResidentOldRent", "SourceResidentOldDeposit"]].values
+            if not all(src_input_rent_deposit == src_rent_deposit):
+                raise ValueError(f"Source Rent/Deposit does not match. value is database '{src_rent_deposit.values}'. "
+                                 f"Values in input '{src_input_rent_deposit.values}'"
+                                 )
+
+            if row["TransType"] == "Swapping":
+                des_rent_deposit = residents_info.loc[residents_info[self.uid] == row["DestinationEnrollmentID"], ["Rent", "Deposit"]].squeeze()
+                des_input_rent_deposit = row[["DestinationResidentOldRent", "DestinationResidentOldDeposit"]].values
+                if not all(des_input_rent_deposit == des_rent_deposit):
+                    raise ValueError(f"Destination Rent/Deposit does not match. value is database '{des_rent_deposit.values}'. "
+                                     f"Values in input '{des_input_rent_deposit.values}'"
+                                     )
+
+        return input_df
 
     def prepare_validate_final_setllement(self):
         pass
 
     def prepare_validate_rent_history(self):
         pass
+
+    def valiate_src_exit(self):
+        return
