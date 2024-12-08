@@ -1,9 +1,7 @@
 class TestResidentDatabaseManager(unittest.TestCase):
     def setUp(self):
         # Create an instance of the ResidentDatabaseManager
-        self.db_manager = ResidentDatabaseManager(
-            path="./test_store/"
-        )  # Use a test directory
+        self.db_manager = ResidentDatabaseManager(path="./test_store/")  # Use a test directory
 
     def test_invalid_date_format(self):
         # Create a DataFrame with an invalid date format
@@ -69,9 +67,7 @@ class TestResidentDatabaseManager(unittest.TestCase):
             str_cols=[],
         )
 
-        self.assertEqual(
-            validated_data["RentStartDate"].iloc[0], pd.to_datetime("2050-12-01")
-        )
+        self.assertEqual(validated_data["RentStartDate"].iloc[0], pd.to_datetime("2050-12-01"))
 
     def test_duplicate_entries(self):
         data_with_duplicates = pd.DataFrame(
@@ -83,9 +79,7 @@ class TestResidentDatabaseManager(unittest.TestCase):
             }
         )
 
-        with self.assertRaises(
-            ValueError
-        ):  # Should raise an error due to duplicate EnrollmentID
+        with self.assertRaises(ValueError):  # Should raise an error due to duplicate EnrollmentID
             self.db_manager._validate_data(
                 data_with_duplicates,
                 pd.DataFrame(),
@@ -97,9 +91,7 @@ class TestResidentDatabaseManager(unittest.TestCase):
             )
 
     def test_empty_dataset(self):
-        empty_data = pd.DataFrame(
-            columns=["EnrollmentID", "DateofAdmission", "DateofBirth", "RentStartDate"]
-        )
+        empty_data = pd.DataFrame(columns=["EnrollmentID", "DateofAdmission", "DateofBirth", "RentStartDate"])
 
         # This should pass without inserting anything into the database
         validated_data = self.db_manager._validate_data(
@@ -154,9 +146,5 @@ class TestResidentDatabaseManager(unittest.TestCase):
             str_cols=[],
         )
 
-        self.assertEqual(
-            validated_data["DateofAdmission"].iloc[0], pd.to_datetime("1900-01-01")
-        )
-        self.assertEqual(
-            validated_data["RentStartDate"].iloc[0], pd.to_datetime("2050-01-01")
-        )
+        self.assertEqual(validated_data["DateofAdmission"].iloc[0], pd.to_datetime("1900-01-01"))
+        self.assertEqual(validated_data["RentStartDate"].iloc[0], pd.to_datetime("2050-01-01"))

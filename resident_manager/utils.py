@@ -5,12 +5,12 @@ import os
 import pathlib
 import shutil
 import sqlite3
+import time
 from typing import Any, Literal, Optional, Sequence
 
 import configs
 import numpy as np
 import pandas as pd
-import time
 
 
 def log_and_backup(
@@ -39,9 +39,7 @@ def log_and_backup(
                     data = data.to_frame().T
 
                 if bed_id_col in data.columns:
-                    data[room_id_col] = data[bed_id_col].str.replace(
-                        r"\D", "", regex=True
-                    )
+                    data[room_id_col] = data[bed_id_col].str.replace(r"\D", "", regex=True)
                     bed_ids = "_".join(data[bed_id_col].tolist())
 
                 if room_id_col in data.columns:
@@ -68,9 +66,7 @@ def log_and_backup(
             log_new_db = np.nan
 
             if copy_db:
-                log_time, log_old_db, log_new_db = db_handler.copy_and_refresh_db(
-                    date_format=date_format
-                )
+                log_time, log_old_db, log_new_db = db_handler.copy_and_refresh_db(date_format=date_format)
 
             logs["Date"] = log_time
             logs["DB_Before"] = log_old_db
@@ -106,50 +102,29 @@ class DatabaseHandler:
         self.connection = self.connect()
         self._current_db_in_use = self.get_latest_db_path()
 
-    def get_latest_db_path(
-        self, fl_name_dt_frmt: str = "%Y-%m-%d_%H-%M-%S", full_path: bool = True
-    ) -> str:
+    def get_latest_db_path(self, fl_name_dt_frmt: str = "%Y-%m-%d_%H-%M-%S", full_path: bool = True) -> str:
         """Gets the latest db name. The files are always store in a certain format. This function
         use this format to always fetch the latest databse that we need to load.
         """
         rand_dt = dt.datetime.now().strftime(fl_name_dt_frmt)
         files_list = os.listdir(str(self.db_path))
-        db_list = [
-            file.strip(self.db_extension)
-            for file in files_list
-            if (file.endswith(self.db_extension) and file.startswith(self.db_filename))
-        ]
+        db_list = [file.strip(self.db_extension) for file in files_list if (file.endswith(self.db_extension) and file.startswith(self.db_filename))]
 
         if not db_list:
             raise FileNotFoundError("No database files found in the directory")
 
-        dt_filename_dict = {
-            file[-len(rand_dt):]: f"{file}{self.db_extension}" for file in db_list
-        }
+        dt_filename_dict = {file[-len(rand_dt) :]: f"{file}{self.db_extension}" for file in db_list}
 
         if not dt_filename_dict:
             raise ValueError("No database files matching the expected pattern found")
 
-        last_db_date = max(
-            [
-                dt.datetime.strptime(date, fl_name_dt_frmt)
-                for date in dt_filename_dict.keys()
-            ]
-        )
+        last_db_date = max([dt.datetime.strptime(date, fl_name_dt_frmt) for date in dt_filename_dict.keys()])
         last_db_date_str = last_db_date.strftime(fl_name_dt_frmt)
-        return (
-            str(self.db_path / dt_filename_dict[last_db_date_str])
-            if full_path
-            else dt_filename_dict[last_db_date_str]
-        )
+        return str(self.db_path / dt_filename_dict[last_db_date_str]) if full_path else dt_filename_dict[last_db_date_str]
 
     def list_all_db(self, fl_name_dt_frmt: str = "%Y-%m-%d_%H-%M-%S"):
         files_list = os.listdir(str(self.db_path))
-        db_list = [
-            file.strip(self.db_extension)
-            for file in files_list
-            if (file.endswith(self.db_extension) and file.startswith(self.db_filename))
-        ]
+        db_list = [file.strip(self.db_extension) for file in files_list if (file.endswith(self.db_extension) and file.startswith(self.db_filename))]
 
         if not db_list:
             raise FileNotFoundError("No database files found in the directory")
@@ -173,13 +148,9 @@ class DatabaseHandler:
         result = self.connection.execute(query).fetchone()
         return result is not None
 
-    def load_table(
-        self, table_name, parse_dates: Optional[list[str]] = None
-    ) -> pd.DataFrame:
+    def load_table(self, table_name, parse_dates: Optional[list[str]] = None) -> pd.DataFrame:
         """loads the required table from db"""
-        df = pd.read_sql(
-            f"SELECT * FROM {table_name}", self.connection, parse_dates=parse_dates
-        )
+        df = pd.read_sql(f"SELECT * FROM {table_name}", self.connection, parse_dates=parse_dates)
         object_cols = df.select_dtypes(include="object").columns
         df[object_cols] = df[object_cols].astype("string")
         return df
@@ -194,15 +165,11 @@ class DatabaseHandler:
         """Insert the data into table"""
 
         if not table_name:
-            raise ValueError(
-                f"table name cannot be none or blank, table name passed is : {table_name}"
-            )
+            raise ValueError(f"table name cannot be none or blank, table name passed is : {table_name}")
 
         table_exists = self.table_exists(table_name=table_name)
         if not table_exists and if_exists != "replace":
-            raise ValueError(
-                f"Table: {table_name} does not exist and 'if_exists' is {if_exists}"
-            )
+            raise ValueError(f"Table: {table_name} does not exist and 'if_exists' is {if_exists}")
 
         df.to_sql(table_name, self.connection, if_exists=if_exists, index=index)
 
@@ -231,16 +198,10 @@ class DatabaseHandler:
         self.connection = self.connect()
         self._current_db_in_use = self.get_latest_db_path()
 
-    def revert_to_last_backup(
-        self, renamed_filename="Trashed_at", fl_name_dt_frmt: str = "%Y-%m-%d_%H-%M-%S"
-    ):
+    def revert_to_last_backup(self, renamed_filename="Trashed_at", fl_name_dt_frmt: str = "%Y-%m-%d_%H-%M-%S"):
         curr_datetime = dt.datetime.now().strftime(fl_name_dt_frmt)
         files_list = os.listdir(str(self.db_path))
-        db_list = [
-            file.strip(self.db_extension)
-            for file in files_list
-            if (file.endswith(self.db_extension) and file.startswith(self.db_filename))
-        ]
+        db_list = [file.strip(self.db_extension) for file in files_list if (file.endswith(self.db_extension) and file.startswith(self.db_filename))]
 
         if not db_list:
             raise FileNotFoundError("No database files found in the directory")
@@ -309,9 +270,7 @@ class DataManager:
         filter_cols: Optional[str | list[str]] = None,
     ) -> pd.DataFrame:
         """Loads the residents information given the IDs and columns filter"""
-        df = self.db_handler.load_table(
-            self.confs.residents_tbl, parse_dates=self.confs.date_cols_residents_tbl
-        )
+        df = self.db_handler.load_table(self.confs.residents_tbl, parse_dates=self.confs.date_cols_residents_tbl)
         df_out = df
         if filter_ids:
             if not all([uid in df[self.uid].values for uid in filter_ids]):
@@ -335,9 +294,7 @@ class DataManager:
         If the bed is empty, that is no one is staying in the room, then uid is nan
         """
 
-        df = self.db_handler.load_table(
-            self.confs.current_status_tbl, parse_dates=self.confs.date_cols_status_tbl
-        )
+        df = self.db_handler.load_table(self.confs.current_status_tbl, parse_dates=self.confs.date_cols_status_tbl)
 
         if isinstance(filter_bedId, str):
             filter_bedId = [filter_bedId]
@@ -354,9 +311,7 @@ class DataManager:
         return df
 
     def load_electricity_table(self) -> pd.DataFrame:
-        df = self.db_handler.load_table(
-            self.confs.electricity_tbl, parse_dates=self.confs.date_cols_electricity_tbl
-        )
+        df = self.db_handler.load_table(self.confs.electricity_tbl, parse_dates=self.confs.date_cols_electricity_tbl)
         df.columns = df.columns.str.replace("Room_", "")
         return df.sort_values(self.confs.date_cols_electricity_tbl)
 
@@ -388,95 +343,59 @@ class DataManager:
         return status.loc[status[self.uid].isna(), self.bed_id].tolist()
 
     def load_logs(self):
-        return self.db_handler.load_table(
-            self.confs.logs_tbl, parse_dates=self.confs.date_cols_logs_tbl
-        )
+        return self.db_handler.load_table(self.confs.logs_tbl, parse_dates=self.confs.date_cols_logs_tbl)
 
     def insert_log(self, input_df: pd.DataFrame):
-        self.db_handler.insert_records(
-            self.confs.logs_tbl, input_df, if_exists="append"
-        )
+        self.db_handler.insert_records(self.confs.logs_tbl, input_df, if_exists="append")
 
     @log_and_backup()
-    def insert_resident_record(
-        self, input_df: pd.DataFrame, log_comments: Optional[str] = None
-    ):
-        valid_input = self.prepare_and_validate_resident_input(
-            input_df, check_if_exists_in_old=[self.uid]
-        )
-        self.db_handler.insert_records(
-            self.confs.residents_tbl, valid_input, if_exists="append"
-        )
+    def insert_resident_record(self, input_df: pd.DataFrame, log_comments: Optional[str] = None):
+        valid_input = self.prepare_and_validate_resident_input(input_df, check_if_exists_in_old=[self.uid])
+        self.db_handler.insert_records(self.confs.residents_tbl, valid_input, if_exists="append")
         return
 
     @log_and_backup()
-    def insert_electricity_record(
-        self, input_df: pd.DataFrame, log_comments: Optional[str] = None
-    ):
-        valid_input = self.prepare_and_validate_elect_input(
-            input_df, check_if_exists_in_old=self.confs.date_cols_electricity_tbl
-        )
-        self.db_handler.insert_records(
-            self.confs.electricity_tbl, valid_input, if_exists="append"
-        )
+    def insert_electricity_record(self, input_df: pd.DataFrame, log_comments: Optional[str] = None):
+        valid_input = self.prepare_and_validate_elect_input(input_df, check_if_exists_in_old=self.confs.date_cols_electricity_tbl)
+        self.db_handler.insert_records(self.confs.electricity_tbl, valid_input, if_exists="append")
         return
 
     def insert_transaction(self, input_df: pd.DataFrame):
         # valid_input = self.prepare_and_validate_trans_input(input_df)
-        self.db_handler.insert_records(
-            self.confs.transactions_tbl, input_df, if_exists="append"
-        )
+        self.db_handler.insert_records(self.confs.transactions_tbl, input_df, if_exists="append")
 
     def insert_final_settlement_record(self, input_df: pd.DataFrame):
-        self.db_handler.insert_records(
-            table_name=self.confs.final_settlement_tbl, df=input_df, if_exists="append"
-        )
+        self.db_handler.insert_records(table_name=self.confs.final_settlement_tbl, df=input_df, if_exists="append")
 
     def insert_rent_history(self, input_df: pd.DataFrame):
-        self.db_handler.insert_records(
-            table_name=self.confs.rent_history_tbl, df=input_df, if_exists="append"
-        )
+        self.db_handler.insert_records(table_name=self.confs.rent_history_tbl, df=input_df, if_exists="append")
 
     def update_current_status(self, new_status: pd.DataFrame):
         valid_status = self.prepare_and_validate_status(new_status)
-        return self.db_handler.insert_records(
-            self.confs.current_status_tbl, valid_status, if_exists="replace"
-        )
+        return self.db_handler.insert_records(self.confs.current_status_tbl, valid_status, if_exists="replace")
 
     @log_and_backup()
     def edit_electricity_record(self, input_df, log_comments: Optional[str] = None):
         all_records = self.load_electricity_table()
-        new_record = self.prepare_and_validate_elect_input(
-            input_df, check_if_exists_in_old=None
-        )
+        new_record = self.prepare_and_validate_elect_input(input_df, check_if_exists_in_old=None)
 
         for col in all_records.columns:
             if col not in ["Date"]:
-                all_records.loc[all_records["Date"].isin(new_record["Date"]), col] = (
-                    new_record[col].iloc[0].squeeze()
-                )
+                all_records.loc[all_records["Date"].isin(new_record["Date"]), col] = new_record[col].iloc[0].squeeze()
 
-        self.db_handler.insert_records(
-            self.confs.electricity_tbl, all_records, if_exists="replace"
-        )
+        self.db_handler.insert_records(self.confs.electricity_tbl, all_records, if_exists="replace")
         return True
 
     @log_and_backup()
     def edit_resident_record(self, input_df, log_comments: Optional[str] = None):
         all_records = self.load_residents_info_table()
-        new_record = self.prepare_and_validate_resident_input(
-            input_df, check_if_exists_in_old=None
-        )
+        new_record = self.prepare_and_validate_resident_input(input_df, check_if_exists_in_old=None)
 
         for col in all_records.columns:
             if col not in [self.uid]:
-                all_records.loc[
-                    all_records[self.uid].isin(new_record[self.uid]), col
-                ] = new_record[col].iloc[0]
+                all_records.loc[all_records[self.uid].isin(new_record[self.uid]), col] = new_record[col].iloc[0]
 
-        self.db_handler.insert_records(
-            self.confs.residents_tbl, all_records, if_exists="replace"
-        )
+        self.db_handler.insert_records(self.confs.residents_tbl, all_records, if_exists="replace")
         return True
 
     def revert_to_last_backup(self):
@@ -485,16 +404,12 @@ class DataManager:
     def _coerce_to_list(self, input: Any | Sequence) -> list:
         """Coerce any object to list. Returns empty list if input is None"""
         if input:
-            if isinstance(input, collections.abc.Sequence) and not isinstance(
-                input, (str, bytes)
-            ):
+            if isinstance(input, collections.abc.Sequence) and not isinstance(input, (str, bytes)):
                 return list(input)
 
         return []
 
-    def check_valid_bedID(
-        self, bed_id: str | Sequence[str], valid_ids: Sequence[str]
-    ) -> bool:
+    def check_valid_bedID(self, bed_id: str | Sequence[str], valid_ids: Sequence[str]) -> bool:
 
         bed_ids = [bed_id] if isinstance(bed_id, str) else list(bed_id)
         if not bed_ids:
@@ -517,15 +432,11 @@ class DataManager:
         str_cols = self._coerce_to_list(str_cols)
 
         for a_col in int_cols:
-            input_df[a_col] = pd.to_numeric(
-                input_df[a_col], errors="raise", downcast="integer"
-            )
+            input_df[a_col] = pd.to_numeric(input_df[a_col], errors="raise", downcast="integer")
         for a_col in date_cols:
             input_df[a_col] = pd.to_datetime(input_df[a_col])
         for a_col in float_cols:
-            input_df[a_col] = pd.to_numeric(input_df[a_col], errors="raise").astype(
-                "float"
-            )
+            input_df[a_col] = pd.to_numeric(input_df[a_col], errors="raise").astype("float")
         for a_col in str_cols:
             input_df[a_col] = input_df[a_col].astype("string")
 
@@ -554,13 +465,9 @@ class DataManager:
 
         missing_cols = [col for col in str_cols if col not in data.columns]
         if missing_cols:
-            raise ValueError(
-                f"Not all col_names ({missing_cols}) in data columns ({data.columns})"
-            )
+            raise ValueError(f"Not all col_names ({missing_cols}) in data columns ({data.columns})")
 
-        not_str = [
-            col for col in str_cols if not (pd.api.types.is_string_dtype(data[col]))
-        ]
+        not_str = [col for col in str_cols if not (pd.api.types.is_string_dtype(data[col]))]
         if not_str:
             raise ValueError(f"Data type of the columns: ({not_str}) is not string")
 
@@ -573,13 +480,9 @@ class DataManager:
                 raise ValueError(f"Nan in the input_df id cols:{check_nan_cols}")
 
         if not allow_duplicates:
-            duplicates = [
-                col for col in str_cols if any(data.duplicated(subset=[col]).to_numpy())
-            ]
+            duplicates = [col for col in str_cols if any(data.duplicated(subset=[col]).to_numpy())]
             if duplicates:
-                raise ValueError(
-                    f"Duplicated values in id_cols {duplicates} in the new data to be inserted"
-                )
+                raise ValueError(f"Duplicated values in id_cols {duplicates} in the new data to be inserted")
         return
 
     def float_colum_checks(
@@ -602,13 +505,9 @@ class DataManager:
 
         missing_cols = [col for col in float_cols if col not in data.columns]
         if missing_cols:
-            raise ValueError(
-                f"Not all col_names ({missing_cols}) in data columns ({data.columns})"
-            )
+            raise ValueError(f"Not all col_names ({missing_cols}) in data columns ({data.columns})")
 
-        not_float = [
-            col for col in float_cols if not (pd.api.types.is_float_dtype(data[col]))
-        ]
+        not_float = [col for col in float_cols if not (pd.api.types.is_float_dtype(data[col]))]
         if not_float:
             raise ValueError(f"Data type of the columns: ({not_float}) is not float")
 
@@ -637,38 +536,24 @@ class DataManager:
 
         missing_cols = [col for col in date_cols if col not in data.columns]
         if missing_cols:
-            raise ValueError(
-                f"Not all col_names ({date_cols}) in data columns ({data.columns})"
-            )
+            raise ValueError(f"Not all col_names ({date_cols}) in data columns ({data.columns})")
 
-        not_date = [
-            col
-            for col in date_cols
-            if not (pd.api.types.is_datetime64_any_dtype(data[col]))
-        ]
+        not_date = [col for col in date_cols if not (pd.api.types.is_datetime64_any_dtype(data[col]))]
         if not_date:
             raise ValueError(f"Data type of the columns: ({not_date}) is not float")
 
         invalid_dt = [col for col in date_cols if (data[col] > dt.datetime.now()).any()]
         if invalid_dt:
-            raise ValueError(
-                f"Invalid Dates: Cannot take future date time. Found future date time in col ({invalid_dt})"
-            )
+            raise ValueError(f"Invalid Dates: Cannot take future date time. Found future date time in col ({invalid_dt})")
 
         if not allow_nan:
             if any(data[date_cols].isna().any(axis=0)):
                 raise ValueError(f"Nan in the input_df for float cols:{date_cols}")
 
         if not allow_duplicates:
-            duplicates = [
-                col
-                for col in date_cols
-                if any(data.duplicated(subset=[col]).to_numpy())
-            ]
+            duplicates = [col for col in date_cols if any(data.duplicated(subset=[col]).to_numpy())]
             if duplicates:
-                raise ValueError(
-                    f"Duplicated values in date cols {duplicates} in the new data to be inserted"
-                )
+                raise ValueError(f"Duplicated values in date cols {duplicates} in the new data to be inserted")
 
         return
 
@@ -689,32 +574,18 @@ class DataManager:
 
         missing_cols = [col for col in new_df if col not in old_df.columns]
         if missing_cols:
-            raise ValueError(
-                f"Columns from new df missing in old df: Missing ({missing_cols})"
-            )
+            raise ValueError(f"Columns from new df missing in old df: Missing ({missing_cols})")
 
         # aligning columns
         new_df = new_df[old_df.columns]
         if any((old_df.dtypes != new_df.dtypes).to_numpy()):
-            raise ValueError(
-                "Data types of old and new data do not match for comparison"
-            )
+            raise ValueError("Data types of old and new data do not match for comparison")
 
         if check_if_exists_in_old:
-            check_if_exists_in_old = (
-                [check_if_exists_in_old]
-                if isinstance(check_if_exists_in_old, str)
-                else list(check_if_exists_in_old)
-            )
-            duplicates = [
-                col
-                for col in check_if_exists_in_old
-                if any(new_df[col].isin(old_df[col]).to_numpy())
-            ]
+            check_if_exists_in_old = [check_if_exists_in_old] if isinstance(check_if_exists_in_old, str) else list(check_if_exists_in_old)
+            duplicates = [col for col in check_if_exists_in_old if any(new_df[col].isin(old_df[col]).to_numpy())]
             if duplicates:
-                raise ValueError(
-                    f"Values of these cols ({duplicates}) in new data already exists in old database"
-                )
+                raise ValueError(f"Values of these cols ({duplicates}) in new data already exists in old database")
 
         return new_df
 
@@ -727,37 +598,24 @@ class DataManager:
         date_cols = self.confs.date_cols_residents_tbl
         float_cols = self.confs.float_cols_residents_tbl
         str_cols = [col for col in data.columns if col not in date_cols + float_cols]
-        data = self.convert_data_types(
-            input_df=data, date_cols=date_cols, float_cols=float_cols, str_cols=str_cols
-        )
+        data = self.convert_data_types(input_df=data, date_cols=date_cols, float_cols=float_cols, str_cols=str_cols)
 
-        self.string_colum_checks(
-            data=data, str_cols=[self.uid], allow_nan_cols=None, allow_duplicates=False
-        )
-        self.float_colum_checks(
-            data=data, float_cols=float_cols, allow_nan_cols=None, allow_zero=False
-        )
-        self.check_valid_bedID(
-            data[self.bed_id].values.tolist(), valid_ids=self.confs.valid_bedIDs
-        )
+        self.string_colum_checks(data=data, str_cols=[self.uid], allow_nan_cols=None, allow_duplicates=False)
+        self.float_colum_checks(data=data, float_cols=float_cols, allow_nan_cols=None, allow_zero=False)
+        self.check_valid_bedID(data[self.bed_id].values.tolist(), valid_ids=self.confs.valid_bedIDs)
 
-        invalid_uid = (data[self.uid].str.isdigit()) & (
-            data[self.uid].str.len() == self.confs.uid_length
-        )
+        invalid_uid = (data[self.uid].str.isdigit()) & (data[self.uid].str.len() == self.confs.uid_length)
         invalid_uid = invalid_uid[invalid_uid == 0].values.tolist()
         if invalid_uid:
             raise ValueError(
-                f"Invalid {self.uid}: can only have digits in its length should"
-                f" be {self.confs.uid_length}: Invalid items -> ({invalid_uid})"
+                f"Invalid {self.uid}: can only have digits in its length should" f" be {self.confs.uid_length}: Invalid items -> ({invalid_uid})"
             )
 
         if self.room_id not in data.columns:
             data[self.room_id] = data[self.bed_id].str.replace(r"\D", "", regex=True)
 
         old_data = self.load_residents_info_table()
-        return self.validate_df_new_with_old(
-            old_df=old_data, new_df=data, check_if_exists_in_old=check_if_exists_in_old
-        )
+        return self.validate_df_new_with_old(old_df=old_data, new_df=data, check_if_exists_in_old=check_if_exists_in_old)
 
     def prepare_and_validate_elect_input(
         self,
@@ -770,12 +628,8 @@ class DataManager:
         float_cols = self.confs.float_cols_electricity_tbl
         str_cols = [col for col in data.columns if col not in date_cols + float_cols]
 
-        data = self.convert_data_types(
-            input_df=data, date_cols=date_cols, float_cols=float_cols, str_cols=str_cols
-        )
-        self.float_colum_checks(
-            data=data, float_cols=float_cols, allow_zero=True
-        )
+        data = self.convert_data_types(input_df=data, date_cols=date_cols, float_cols=float_cols, str_cols=str_cols)
+        self.float_colum_checks(data=data, float_cols=float_cols, allow_zero=True)
         self.date_colum_checks(
             data=data,
             date_cols=self.confs.date_cols_electricity_tbl,
@@ -784,13 +638,9 @@ class DataManager:
         )
 
         old_data = self.load_electricity_table()
-        valid_data = self.validate_df_new_with_old(
-            old_df=old_data, new_df=data, check_if_exists_in_old=check_if_exists_in_old
-        )
+        valid_data = self.validate_df_new_with_old(old_df=old_data, new_df=data, check_if_exists_in_old=check_if_exists_in_old)
 
-        valid_data.columns = valid_data.columns.map(
-            lambda col: f"Room_{col}" if col.isdigit() else col
-        )
+        valid_data.columns = valid_data.columns.map(lambda col: f"Room_{col}" if col.isdigit() else col)
 
         return valid_data
 
@@ -800,9 +650,7 @@ class DataManager:
         check_if_exists_in_old: Optional[str | Sequence[str]] = None,
     ) -> pd.DataFrame:
 
-        curr_status = self.load_current_status(
-            filter_bedId=data[self.bed_id].values.tolist()
-        ).squeeze()
+        curr_status = self.load_current_status(filter_bedId=data[self.bed_id].values.tolist()).squeeze()
 
         if self.room_id not in data.columns:
             data[self.room_id] = data[self.bed_id].str.replace(r"\D", "", regex=True)
@@ -811,16 +659,10 @@ class DataManager:
         float_cols = self.confs.float_cols_transactions_tbl
         str_cols = [col for col in data.columns if col not in date_cols + float_cols]
 
-        data = self.convert_data_types(
-            input_df=data, date_cols=date_cols, float_cols=float_cols, str_cols=str_cols
-        )
-        self.string_colum_checks(
-            data=data, str_cols=str_cols, allow_duplicates=True
-        )
+        data = self.convert_data_types(input_df=data, date_cols=date_cols, float_cols=float_cols, str_cols=str_cols)
+        self.string_colum_checks(data=data, str_cols=str_cols, allow_duplicates=True)
 
-        self.date_colum_checks(
-            data=data, date_cols=["TransDate"], allow_nan=False, allow_duplicates=False
-        )
+        self.date_colum_checks(data=data, date_cols=["TransDate"], allow_nan=False, allow_duplicates=False)
 
         if not pd.api.types.is_datetime64_any_dtype(data["RentThruDate"]):
             raise ValueError("RentThruDate columns is not a datetime column")
@@ -828,16 +670,10 @@ class DataManager:
         if "RentThruDate" not in data.columns:
             raise ValueError("Columns RentThruDate not found in transaction data")
 
-        self.float_colum_checks(
-            data=data, float_cols=float_cols, allow_zero=True
-        )
-        self.check_valid_bedID(
-            data[self.bed_id].values.tolist(), valid_ids=self.confs.valid_bedIDs
-        )
+        self.float_colum_checks(data=data, float_cols=float_cols, allow_zero=True)
+        self.check_valid_bedID(data[self.bed_id].values.tolist(), valid_ids=self.confs.valid_bedIDs)
 
-        if (
-            data["RoomElectricityReading"] < curr_status["RoomElectricityReading"]
-        ).any():
+        if (data["RoomElectricityReading"] < curr_status["RoomElectricityReading"]).any():
             raise ValueError(
                 f"Invalid Transaction : Room electricity reading at transaction ({data['RoomElectricityReading']}) "
                 f"cannot be less than last Room electricity reading ({curr_status['RoomElectricityReading']})"
@@ -847,9 +683,7 @@ class DataManager:
 
     def prepare_and_validate_status(self, data: pd.DataFrame) -> pd.DataFrame:
 
-        self.check_valid_bedID(
-            data[self.bed_id].values.tolist(), valid_ids=self.confs.valid_bedIDs
-        )
+        self.check_valid_bedID(data[self.bed_id].values.tolist(), valid_ids=self.confs.valid_bedIDs)
 
         if len(data) != len(self.confs.valid_bedIDs):
             raise ValueError(
@@ -899,20 +733,20 @@ class DataManager:
 
         date_cols = ["TransDate"]
         float_cols = [
-            "SourceElectReading", "SourceResidentOldRent", "SourceResidentNewRent",
-            "SourceResidentOldDeposit", "SourceResidentNewDeposit",
-            "DestinationElectReading", "DestinationResidentOldRent",
-            "DestinationResidentNewRent", "DestinationResidentOldDeposit",
-            "DestinationResidentNewDeposit"
+            "SourceElectReading",
+            "SourceResidentOldRent",
+            "SourceResidentNewRent",
+            "SourceResidentOldDeposit",
+            "SourceResidentNewDeposit",
+            "DestinationElectReading",
+            "DestinationResidentOldRent",
+            "DestinationResidentNewRent",
+            "DestinationResidentOldDeposit",
+            "DestinationResidentNewDeposit",
         ]
-        str_cols = [
-            "TransType", "SourceBedId", "SourceEnrollmentID",
-            "DestinationBedId", "DestinationEnrollmentID", "Comments"
-        ]
+        str_cols = ["TransType", "SourceBedId", "SourceEnrollmentID", "DestinationBedId", "DestinationEnrollmentID", "Comments"]
 
-        input_df = self.convert_data_types(
-            input_df=input_df, date_cols=date_cols, float_cols=float_cols, str_cols=str_cols
-        )
+        input_df = self.convert_data_types(input_df=input_df, date_cols=date_cols, float_cols=float_cols, str_cols=str_cols)
 
         input_df["SourceRoomNo"] = input_df["SourceBedId"].str.replace(r"\D", "", regex=True)
         input_df["DestinationRoomNo"] = input_df["DestinationBedId"].str.replace(r"\D", "", regex=True)
@@ -945,8 +779,7 @@ class DataManager:
 
             if not swap and not pd.isna(row["DestinationEnrollmentID"]):
                 raise ValueError(
-                    "Destination Enrollment ID should not be provided when moving to an empty bed. "
-                    f"Found: {row['DestinationEnrollmentID']}"
+                    "Destination Enrollment ID should not be provided when moving to an empty bed. " f"Found: {row['DestinationEnrollmentID']}"
                 )
 
             if swap and not row["DestinationEnrollmentID"]:
@@ -955,17 +788,19 @@ class DataManager:
             src_rent_deposit = residents_info.loc[residents_info[self.uid] == row["SourceEnrollmentID"], ["Rent", "Deposit"]].squeeze().values
             src_input_rent_deposit = row[["SourceResidentOldRent", "SourceResidentOldDeposit"]].values
             if not all(src_input_rent_deposit == src_rent_deposit):
-                raise ValueError(f"Source Rent/Deposit does not match. value is database '{src_rent_deposit.values}'. "
-                                 f"Values in input '{src_input_rent_deposit.values}'"
-                                 )
+                raise ValueError(
+                    f"Source Rent/Deposit does not match. value is database '{src_rent_deposit.values}'. "
+                    f"Values in input '{src_input_rent_deposit.values}'"
+                )
 
             if row["TransType"] == "Swapping":
                 des_rent_deposit = residents_info.loc[residents_info[self.uid] == row["DestinationEnrollmentID"], ["Rent", "Deposit"]].squeeze()
                 des_input_rent_deposit = row[["DestinationResidentOldRent", "DestinationResidentOldDeposit"]].values
                 if not all(des_input_rent_deposit == des_rent_deposit):
-                    raise ValueError(f"Destination Rent/Deposit does not match. value is database '{des_rent_deposit.values}'. "
-                                     f"Values in input '{des_input_rent_deposit.values}'"
-                                     )
+                    raise ValueError(
+                        f"Destination Rent/Deposit does not match. value is database '{des_rent_deposit.values}'. "
+                        f"Values in input '{des_input_rent_deposit.values}'"
+                    )
 
         return input_df
 

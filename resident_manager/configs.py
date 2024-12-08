@@ -110,8 +110,7 @@ float_cols_transactions_tbl = [
     "Deposit",
     "NewBedIDElectReading",
     "NewRent",
-    "NewDeposit"
-
+    "NewDeposit",
 ]
 
 
