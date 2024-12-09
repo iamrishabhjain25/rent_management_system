@@ -1,2 +1,0 @@
-TransDate,TransType,SourceBedId,SourceEnrollmentID,SourceElectReading,SourceResidentOldRent,SourceResidentNewRent,SourceResidentOldDeposit,SourceResidentNewDeposit,DestinationBedId,DestinationEnrollmentID,DestinationElectReading,DestinationResidentOldRent,DestinationResidentNewRent,DestinationResidentOldDeposit,DestinationResidentNewDeposit,Comments
-2024-12-07 23:20:00,Moving to Empty Bed,1B,2024002,3449.5,12000.0,12500,24000.0,25000,202A,,5433.2,,,,,

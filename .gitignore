@@ -6,6 +6,9 @@
 *.xlsx
 *.xls
 
+*.csv
+**/*.csv
+
 # Ignore Jupyter notebooks
 **/*.ipynb
 
