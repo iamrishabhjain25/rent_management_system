@@ -28,7 +28,7 @@ class ResidentManager:
         if trans_type == "entry":
             res = self._process_resident_entry(row=valid_transaction, log_comments=log_comments)
 
-        if trans_type == "payment":
+        if trans_type in ["payment", "charges"]:
             res = self._process_resident_payment(row=valid_transaction, log_comments=log_comments)
 
         self.data_manager.insert_transaction(input_df=valid_transaction.to_frame().T)
@@ -38,11 +38,15 @@ class ResidentManager:
     def _process_resident_payment(self, row: pd.Series, log_comments: Optional[str] = None):
         curr_status = self.data_manager.load_current_status()
         prev_due = curr_status.loc[curr_status[self.uid] == row[self.uid], "PrevDueAmount"].squeeze()
-        curr_status.loc[curr_status[self.uid] == row[self.uid], "PrevDueAmount"] = prev_due - row["PaymentAmount"]
-        write_row = row[["TransDate", "TransType", self.bed_id, self.uid, self.room_id, "PaymentReceived", "Comments"]]
+        prev_charges = curr_status.loc[curr_status[self.uid] == row[self.uid], "AdditionalCharges"].squeeze()
+
+        if row["TransType"] == "payment":
+            curr_status.loc[curr_status[self.uid] == row[self.uid], "PrevDueAmount"] = prev_due - row["TransactionAmount"]
+
+        if row["TransType"] == "charges":
+            curr_status.loc[curr_status[self.uid] == row[self.uid], "AdditionalCharges"] = prev_charges + row["TransactionAmount"]
 
         self.data_manager.update_current_status(new_status=curr_status)
-        self.data_manager.insert_transaction(input_df=write_row.to_frame().T)
         return
 
     @log_and_backup()
@@ -219,7 +223,7 @@ class ResidentManager:
                 filter_bedId=input_row["SourceBedId"], filter_cols="AdditionalCharges"
             ).squeeze(),
             "Comments": input_row["Comments"],
-            "PaymentReceived": np.nan,
+            "TransactionAmount": np.nan,
             "Rent": input_row["SourceResidentOldRent"],
             "Deposit": input_row["SourceResidentOldDeposit"],
             "NewBedID": input_row["DestinationBedId"],
@@ -257,7 +261,7 @@ class ResidentManager:
                 filter_bedId=input_row["DestinationBedId"], filter_cols="AdditionalCharges"
             ).squeeze(),
             "Comments": input_row["Comments"],
-            "PaymentReceived": np.nan,
+            "TransactionAmount": np.nan,
             "Rent": input_row["DestinationResidentOldRent"],
             "Deposit": input_row["DestinationResidentOldDeposit"],
             "NewBedID": input_row["SourceBedId"],

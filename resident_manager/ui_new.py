@@ -819,25 +819,78 @@ class ResidenceManagementStreamlit:
         prev_due = curr_status.loc[curr_status[self.db_manager.uid] == resident_uid, "PrevDueAmount"].squeeze()
         prev_due = st.text_input("Previous Due", value=str(prev_due), disabled=True)
 
-        pay_amt = st.number_input("Enter Payment Amount")
+        pay_amt = st.number_input("Enter Transaction Amount")
 
         log_comments = st.text_input("Comments")
 
         data = {
             f"{self.db_manager.uid}": resident_uid,
-            f"{self.db_manager.bed_id}": curr_status.loc[curr_status[self.db_manager.uid] == resident_uid, f"{self.db_manager.bed_id}"].squeeze(),
-            f"{self.db_manager.room_id}": curr_status.loc[curr_status[self.db_manager.uid] == resident_uid, f"{self.db_manager.room_id}"].squeeze(),
+            f"{self.db_manager.bed_id}": curr_status.loc[curr_status[self.db_manager.uid] == resident_uid, self.db_manager.bed_id].squeeze(),
+            f"{self.db_manager.room_id}": curr_status.loc[curr_status[self.db_manager.uid] == resident_uid, self.db_manager.room_id].squeeze(),
             "TransType": "payment",
             "TransDate": trans_dt_time,
-            "PaymentAmount": pay_amt,
+            "TransactionAmount": pay_amt,
             "Comments": log_comments,
         }
         if not error:
             if st.button("Process Payment"):
                 try:
                     with st.spinner("Processing, please wait"):
-                        self.db_manager.record_payment(row=pd.Series(data), log_comments=log_comments)
+                        self.db_manager.process_transaction(transaction=pd.Series(data), log_comments=log_comments)
                     st.success("Payment processed Successfully")
+                except Exception as e:
+                    st.error(f"Error Updating electricity record {e}")
+                    st.code(traceback.format_exc())
+
+    def record_additional_charges(self):
+        st.subheader("Record Additional charges")
+        curr_status = self.db_manager.data_manager.load_current_status()
+        resident_info = self.db_manager.data_manager.load_residents_info_table()
+        curr_status = curr_status.merge(resident_info[[self.db_manager.uid, "Name"]], on=self.db_manager.uid, how="left")
+        curr_status["options"] = curr_status[self.db_manager.bed_id] + " - " + curr_status["Name"]
+
+        error = ""
+
+        resident_options = curr_status[curr_status["options"].notna()]["options"].values
+        resident = st.selectbox("Choose Resident", resident_options)
+        resident_uid = curr_status.loc[curr_status["options"] == resident, self.db_manager.uid].squeeze()
+
+        trans_dt = st.date_input("Enter Record Date", value=datetime.now().date(), format="DD-MM-YYYY")
+        trans_time = st.time_input("Enter Record Time")
+        trans_dt_time = datetime.combine(trans_dt, trans_time)
+
+        if trans_dt_time > datetime.now():
+            st.error(" Invalid Datetime : date time cannot be later than current time")
+            error += " Invalid Datetime : date time cannot be later than current time"
+
+        if pd.isna(resident):
+            st.error("Invalid Resident Chosen.")
+            error += "Invalid resident chosen"
+
+        prev_due = curr_status.loc[curr_status[self.db_manager.uid] == resident_uid, "PrevDueAmount"].squeeze()
+        prev_due = st.text_input("Previous Due", value=str(prev_due), disabled=True)
+        prev_charges = curr_status.loc[curr_status[self.db_manager.uid] == resident_uid, "AdditionalCharges"].squeeze()
+        prev_charges = st.text_input("Previous Additional charges", value=str(prev_charges), disabled=True)
+
+        pay_amt = st.number_input("Enter Transaction Amount")
+
+        log_comments = st.text_input("Comments")
+
+        data = {
+            f"{self.db_manager.uid}": resident_uid,
+            f"{self.db_manager.bed_id}": curr_status.loc[curr_status[self.db_manager.uid] == resident_uid, self.db_manager.bed_id].squeeze(),
+            f"{self.db_manager.room_id}": curr_status.loc[curr_status[self.db_manager.uid] == resident_uid, self.db_manager.room_id].squeeze(),
+            "TransType": "charges",
+            "TransDate": trans_dt_time,
+            "TransactionAmount": pay_amt,
+            "Comments": log_comments,
+        }
+        if not error:
+            if st.button("Process"):
+                try:
+                    with st.spinner("Processing, please wait"):
+                        self.db_manager.process_transaction(transaction=pd.Series(data), log_comments=log_comments)
+                    st.success("Record processed Successfully")
                 except Exception as e:
                     st.error(f"Error Updating electricity record {e}")
                     st.code(traceback.format_exc())
@@ -861,7 +914,7 @@ def main():
 
     # Sidebar for navigation
     menu = [
-        "Save a Copy",
+        "Record Payment",
         "New Admission",
         "New Electricity Reading",
         "Update Resident Info",
@@ -869,8 +922,9 @@ def main():
         "Entry/Exit of Form",
         "Room Transfer",
         "Calculate Rent",
-        "Record Payment",
+        "Record Additional Charges",
         "Electricity Meter Change",
+        "Save a Copy",
         "Undo Last change",
         "View Current Tables",
     ]
@@ -888,16 +942,18 @@ def main():
         system.update_resident_info()
     elif choice == "Update Electricity Record":
         system.update_electricity_record()
+    elif choice == "Record Payment":
+        system.record_payment()
     elif choice == "Entry/Exit of Form":
         system.record_activity()
     elif choice == "Room Transfer":
         system.room_transfer()
-    elif choice == "View Current Tables":
-        system.view_current_tables()
     elif choice == "Calculate Rent":
         system.calculate_monthly_rent()
-    elif choice == "Record Payment":
-        system.record_payment()
+    elif choice == "Record Additional Charges":
+        system.record_additional_charges()
+    elif choice == "View Current Tables":
+        system.view_current_tables()
 
     elif choice == "Electricity Meter Change":
         system.change_electricity_meter()

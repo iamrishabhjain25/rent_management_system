@@ -757,27 +757,27 @@ class DataManager:
 
     def validate_payment_transaction(self, row: pd.Series):
         curr_status = self.load_current_status()
-        mandatory_cols = [self.uid, self.bed_id, "TransDate", "TransType", "PaymentAmount", "Comments"]
+        mandatory_cols = [self.uid, self.bed_id, "TransDate", "TransType", "TransactionAmount", "Comments"]
         self.validate_columns_or_index(data=row, mandatory_cols=mandatory_cols, if_missing="raise")
 
         if self.room_id not in row.index:
             row[f"{self.room_id}"] = pd.Series(row[self.bed_id]).str.replace(r"\D", "", regex=True).iloc[0]
 
         row["TransDate"] = pd.to_datetime(row["TransDate"])
-        row["PaymentAmount"] = pd.to_numeric(row["PaymentAmount"], errors="coerce")
+        row["TransactionAmount"] = pd.to_numeric(row["TransactionAmount"], errors="coerce")
 
-        if pd.isna(row["PaymentAmount"]):
-            ValueError("Cannot have nan in Payment Amount")
+        if pd.isna(row["TransactionAmount"]):
+            ValueError("Cannot have nan in Payment/charges Amount")
 
         if row[f"{self.uid}"] not in curr_status[self.uid].values:
-            raise ValueError("cannot accept a payment for a resident who is not staying")
+            raise ValueError("cannot accept a payment/charges for a resident who is not staying")
         return row
 
     def validate_transaction(self, row: pd.Series):
 
         trans_type = row["TransType"]
 
-        if trans_type not in ["entry", "exit", "payment"]:
+        if trans_type not in ["entry", "exit", "payment", "charges"]:
             raise ValueError("Found Invalid Transaction. Cannot Validate")
 
         if trans_type == "entry":
@@ -786,7 +786,7 @@ class DataManager:
         if trans_type == "exit":
             valid_row = self.validate_exit_transaction(row=row)
 
-        if trans_type == "payment":
+        if trans_type in ["payment", "charges"]:
             valid_row = self.validate_payment_transaction(row=row)
 
         return valid_row
