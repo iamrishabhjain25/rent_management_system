@@ -66,6 +66,9 @@ class ResidentManager:
         if curr_bed != row[self.bed_id]:
             raise ValueError(f"Invalid Exit. The bedID of exiting {self.uid} does not match this uid in status")
 
+        prev_dues = self.data_manager.load_current_status(filter_bedId=row[self.bed_id], filter_cols="PrevDueAmount").squeeze()
+        prev_charges = self.data_manager.load_current_status(filter_bedId=row[self.bed_id], filter_cols="AdditionalCharges").squeeze()
+
         adj_room_status = self._pre_transaction_room_elect_adjustment(
             curr_status=curr_status,
             trans_room=row[self.room_id],
@@ -97,8 +100,8 @@ class ResidentManager:
         row_with_calc = row_with_calc.merge(resident_info, on=self.uid, how="left")
 
         row_with_calc["RentThruDate"] = row["RentThruDate"]
-        row_with_calc["PrevDueAmount"] = row["PrevDueAmount"]
-        row_with_calc["AdditionalCharges"] = row["AdditionalCharges"]
+        row_with_calc["PrevDueAmount"] = prev_dues
+        row_with_calc["AdditionalCharges"] = prev_charges
         row_with_calc["Comments"] = row["Comments"]
 
         row_with_calc["RentDays"] = (row_with_calc["RentThruDate"] - row_with_calc["LastRentCalcDate"]).dt.days
@@ -232,7 +235,7 @@ class ResidentManager:
             "NewDeposit": input_row["SourceResidentNewDeposit"],
         }
         exit_details = self._process_resident_exit(row=pd.Series(data), copy_db=False)
-        exit_details["TotalAmountDue"] += data["NewDeposit"] - data["Deposit"]
+        exit_details["TotalAmountDue"] = exit_details["TotalAmountDue"] + data["NewDeposit"] - data["Deposit"]
         exit_details["NetAmountDue"] = np.nan
         data["TransType"] = "Room Transfer"
 
