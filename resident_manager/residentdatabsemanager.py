@@ -17,22 +17,32 @@ class ResidentManager:
         self.bed_id = confs.bedId_col
         self.room_id = confs.room_col
 
-    def process_transaction(self, input_df: pd.DataFrame, log_comments: Optional[str] = None):
-        """Process a transaction which could entry or exit
-        input_df = (TransDate, BedID, EnrollmentID, RoomElectricityreading, TransType)
-        """
+    def process_transaction(self, transaction: pd.Series, log_comments: Optional[str] = None):
+        valid_transaction = self.data_manager.validate_transaction(row=transaction)
+        trans_type = valid_transaction["TransType"]
 
-        valid_input = self.data_manager.prepare_and_validate_trans_input(input_df).sort_values("TransDate")
-        for _, row in valid_input.iterrows():
-            if row["TransType"] == "exit":
-                res = self._process_resident_exit(row=row, log_comments=log_comments)
-                self.data_manager.insert_transaction(input_df=valid_input)
-                return res
+        if trans_type == "exit":
+            res = self._process_resident_exit(row=valid_transaction, log_comments=log_comments)
+            self.data_manager.insert_final_settlement_record(res)
 
-            if row["TransType"] == "entry":
-                res = self._process_resident_entry(row=row, log_comments=log_comments)
-                self.data_manager.insert_transaction(input_df=valid_input)
-                return res
+        if trans_type == "entry":
+            res = self._process_resident_entry(row=valid_transaction, log_comments=log_comments)
+
+        if trans_type == "payment":
+            res = self._process_resident_payment(row=valid_transaction, log_comments=log_comments)
+
+        self.data_manager.insert_transaction(input_df=valid_transaction.to_frame().T)
+        return res
+
+    @log_and_backup()
+    def _process_resident_payment(self, row: pd.Series, log_comments: Optional[str] = None):
+        curr_status = self.data_manager.load_current_status()
+        prev_due = curr_status.loc[curr_status[self.uid] == row[self.uid], "PrevDueAmount"].squeeze()
+        curr_status.loc[curr_status[self.uid] == row[self.uid], "PrevDueAmount"] = prev_due - row["PaymentAmount"]
+        write_row = row[["TransDate", "TransType", self.bed_id, self.uid, self.room_id, "PaymentReceived", "Comments"]]
+
+        self.data_manager.update_current_status(new_status=curr_status)
+        self.data_manager.insert_transaction(input_df=write_row.to_frame().T)
         return
 
     @log_and_backup()
@@ -52,7 +62,24 @@ class ResidentManager:
         if curr_bed != row[self.bed_id]:
             raise ValueError(f"Invalid Exit. The bedID of exiting {self.uid} does not match this uid in status")
 
-        row_with_calc = self._electricity_adjustment(adj_type="exit", row=row)
+        adj_room_status = self._pre_transaction_room_elect_adjustment(
+            curr_status=curr_status,
+            trans_room=row[self.room_id],
+            trans_date=row["TransDate"],
+            room_elect_reading=row["RoomElectricityReading"],
+        )
+        curr_status = curr_status[curr_status[self.room_id] != row[self.room_id]]
+        curr_status = pd.concat([curr_status, adj_room_status[curr_status.columns]])
+        cols_to_chng = [
+            col
+            for col in curr_status.columns if col not in [
+                self.room_id, self.bed_id, "RoomElectricityReading", "LastElectricityCalcDate", "TransDate"
+                ]
+                ]
+        curr_status.loc[curr_status[self.uid] == row[self.uid], cols_to_chng] = np.nan
+        self.data_manager.update_current_status(new_status=curr_status)
+
+        row_with_calc = adj_room_status[adj_room_status[self.uid] == row[self.uid]].copy()
         row_with_calc = row_with_calc.rename(
             columns={
                 "TransDate": "ExitDate",
@@ -75,10 +102,12 @@ class ResidentManager:
         row_with_calc["ElectricityCharges"] = row_with_calc["CumulativeElectConsumption"] * self.confs.elect_rate
 
         row_with_calc["TotalAmountDue"] = (
-            row_with_calc["RentDue"] + row_with_calc["ElectricityCharges"] + row_with_calc["PrevDueAmount"] + row_with_calc["AdditionalCharges"]
+            row_with_calc["RentDue"]
+            + row_with_calc["ElectricityCharges"]
+            + row_with_calc["PrevDueAmount"]
+            + row_with_calc["AdditionalCharges"]
         )
         row_with_calc["NetAmountDue"] = row_with_calc["TotalAmountDue"] - row_with_calc["Deposit"]
-        self.data_manager.insert_final_settlement_record(row_with_calc)
         return row_with_calc
 
     @log_and_backup()
@@ -96,104 +125,87 @@ class ResidentManager:
             raise ValueError(f"{self.uid}: {row[self.uid]} does not exist in databse. " "Please create an admission or enter valid Enrollment ID")
 
         if row[self.uid] in curr_status[self.uid].values:
-            curr_room = curr_status[curr_status[self.uid] == row[self.uid], self.bed_id].squeeze()
+            curr_room = curr_status.loc[curr_status[self.uid] == row[self.uid], self.bed_id].squeeze()
             raise ValueError(f"Invalid Entry. The Enrollment id is already staying in Bed {curr_room}")
 
-        return self._electricity_adjustment(adj_type="entry", row=row)
-
-    def _electricity_adjustment(self, adj_type: str, row: pd.Series):
-        """To handle the electricity calulation logic based on entry or exit of the resident
-        If exiting, then remvoe the record from current status
-        If entering, then add the record to the current status
-        It also sets the Last rent and electricity calculation dates to transaction date
-        """
-
-        curr_status = self.data_manager.load_current_status()
-        room_prev_vals = self._pre_transaction_room_elect_adjustment(
+        adj_room_status = self._pre_transaction_room_elect_adjustment(
             curr_status=curr_status,
             trans_room=row[self.room_id],
             trans_date=row["TransDate"],
             room_elect_reading=row["RoomElectricityReading"],
         )
-        empty_rooms = curr_status[curr_status[self.uid].isna()]
-        occupied_room = curr_status[curr_status[self.uid].notna()]
-        occupied_room = pd.concat([occupied_room, room_prev_vals[occupied_room.columns]]).drop_duplicates(subset=[self.uid], keep="last")
-        curr_status = pd.concat([empty_rooms, occupied_room])
-        curr_status.loc[curr_status[self.room_id] == row[self.room_id], "RoomElectricityReading"] = row["RoomElectricityReading"]
+        curr_status = curr_status[curr_status[self.room_id] != row[self.room_id]]
+        curr_status = pd.concat([curr_status, adj_room_status[curr_status.columns]])
 
-        exiting_record = None
-        if adj_type == "exit":
-            exiting_record = room_prev_vals[room_prev_vals[self.uid] == row[self.uid]].copy()
-            cols_to_chng = [
-                col
-                for col in curr_status.columns
-                if col not in [self.room_id, self.bed_id, "RoomElectricityReading", "LastElectricityCalcDate", "TransDate"]
-            ]
-            curr_status.loc[curr_status[self.uid] == row[self.uid], cols_to_chng] = np.nan
+        row_df = row.to_frame().T
+        row_df["CumulativeElectConsumption"] = 0
+        admission_date = self.data_manager.load_residents_info_table(filter_ids=[row[self.uid]], filter_cols=["RentStartDate"]).squeeze()
+        row_df["LastRentCalcDate"] = row["LastRentCalcDate"] if "LastRentCalcDate" in row.index else (admission_date - dt.timedelta(days=1))
+        row_df["LastElectricityCalcDate"] = row["TransDate"]
 
-        if adj_type == "entry":
-            row_df = row.to_frame().T
-            row_df["CumulativeElectConsumption"] = 0
-            admission_date = self.data_manager.load_residents_info_table(filter_ids=[row[self.uid]], filter_cols=["RentStartDate"]).squeeze()
-            row_df["LastRentCalcDate"] = row["LastRentCalcDate"] if "LastRentCalcDate" in row.index else (admission_date - dt.timedelta(days=1))
-            row_df["LastElectricityCalcDate"] = row["TransDate"]
-
-            for col in ["PrevDueAmount", "AdditionalCharges"]:
-                if col not in row_df.columns:
-                    row[col] = 0.0
-            # Updating new entry alredy staying
-            curr_status = pd.concat([curr_status, row_df[curr_status.columns]]).drop_duplicates(subset=[self.bed_id], keep="last")
-
+        for col in ["PrevDueAmount", "AdditionalCharges"]:
+            if col not in row_df.columns:
+                row[col] = 0.0
+        # Updating new entry alredy staying
+        curr_status = pd.concat([curr_status, row_df[curr_status.columns]]).drop_duplicates(subset=[self.bed_id], keep="last")
         self.data_manager.update_current_status(new_status=curr_status)
-        return exiting_record
 
-    def _pre_transaction_room_elect_adjustment(self, curr_status, trans_room, trans_date, room_elect_reading):
+        return
+
+    def _pre_transaction_room_elect_adjustment(self, curr_status, trans_room, trans_date, room_elect_reading) -> pd.DataFrame:
         """
         This function handles the calculation before any entry or exit in the room.
         It gets the uids ofresidents staying in the room. And calculate the total
         electricity consumption just before the transactionand divides the electricity
         among all residents staying equally before transaction happens
         """
-        room_prev_vals = curr_status[curr_status[self.room_id] == trans_room].copy()
-        room_prev_vals = room_prev_vals[room_prev_vals[self.uid].notna()]
-        room_prev_vals["TransDate"] = pd.to_datetime(trans_date)
-        room_prev_vals["NewRoomElectricityReading"] = room_elect_reading
-        room_prev_vals["RoomElectricityConsumption"] = room_prev_vals["NewRoomElectricityReading"] - room_prev_vals["RoomElectricityReading"]
-        room_prev_vals["CumulativeElectConsumption"] += room_prev_vals["RoomElectricityConsumption"] / len(room_prev_vals)
 
-        room_prev_vals = room_prev_vals.rename(
+        room_status = curr_status[curr_status[self.room_id] == trans_room].copy()
+        empty_bed = room_status[room_status[self.uid].isna()][self.bed_id].to_numpy()
+        occupied_bed = room_status[room_status[self.uid].notna()][self.bed_id].to_numpy()
+
+        if len(empty_bed) > 0:
+            if room_status[room_status[self.uid].isna()]["CumulativeElectConsumption"].notna().any():
+                raise ValueError(f"Empty bed cannot have non nan CumulativeElectConsumption. {empty_bed}")
+
+        room_status = room_status[room_status[self.uid].notna()]
+        room_status["TransDate"] = pd.to_datetime(trans_date)
+        room_status["NewRoomElectricityReading"] = room_elect_reading
+        room_status["RoomElectricityConsumption"] = room_status["NewRoomElectricityReading"] - room_status["RoomElectricityReading"]
+        room_status["CumulativeElectConsumption"] += room_status["RoomElectricityConsumption"] / len(occupied_bed)
+
+        room_status = room_status.rename(
             columns={
                 "RoomElectricityReading": "PrevRoomElectricityReading",
                 "NewRoomElectricityReading": "RoomElectricityReading",
             }
         )
-        room_prev_vals["PrevElectricityCalcDate"] = room_prev_vals["LastElectricityCalcDate"]
-        room_prev_vals["LastElectricityCalcDate"] = room_prev_vals["TransDate"]
-        return room_prev_vals
+        room_status["PrevElectricityCalcDate"] = room_status["LastElectricityCalcDate"]
+        room_status["LastElectricityCalcDate"] = room_status["TransDate"]
+
+        return room_status
 
     @log_and_backup()
-    def process_room_transfers(self, input_df: pd.DataFrame):
+    def process_room_transfers(self, row: pd.Series):
 
-        if not len(input_df) == 1:
-            raise ValueError("Currently only allowing one transaction at a time")
+        valid_row = self.data_manager.prepare_validate_room_transfer_input(row_input=row)
 
-        valid_data = self.data_manager.prepare_validate_room_transfer_input(input_df=input_df).sort_values("TransDate")
+        src_exit, transaction_src = self._source_room_exit(input_row=valid_row)
+        if valid_row["IsSwapping"]:
+            desti_exit, transaction_des = self._destination_room_exit(input_row=valid_row)
 
-        for _, row in valid_data.iterrows():
-            src_exit, transaction_src = self._source_room_exit(input_row=row)
-            if row["IsSwapping"]:
-                desti_exit, transaction_des = self._destination_room_exit(input_row=row)
+        self._entry_in_destination(input_row=valid_row, src_exit_details=src_exit)
+        if valid_row["IsSwapping"]:
+            self._entry_in_source(input_row=valid_row, desti_exit_details=desti_exit)
 
-            _ = self._entry_in_destination(input_row=row, src_exit_details=src_exit)
-            if row["IsSwapping"]:
-                _ = self._entry_in_source(input_row=row, desti_exit_details=desti_exit)
+        self.data_manager.insert_transaction(transaction_src)
 
-            self.data_manager.insert_transaction(transaction_src)
-            if row["IsSwapping"]:
-                self.data_manager.insert_transaction(transaction_des)
-        return _
+        if valid_row["IsSwapping"]:
+            self.data_manager.insert_transaction(transaction_des)
+        return
 
     def _source_room_exit(self, input_row: pd.Series):
+        src_resident_info = self.data_manager.load_residents_info_table(filter_ids=input_row["SourceEnrollmentID"])
         data = {
             "TransDate": input_row["TransDate"],
             "RentThruDate": input_row["TransDate"],
@@ -216,11 +228,22 @@ class ResidentManager:
             "NewDeposit": input_row["SourceResidentNewDeposit"],
         }
         exit_details = self._process_resident_exit(row=pd.Series(data), copy_db=False)
+        exit_details["TotalAmountDue"] += data["NewDeposit"] - data["Deposit"]
+        exit_details["NetAmountDue"] = np.nan
         data["TransType"] = "Room Transfer"
+
+        src_resident_info["Rent"] = input_row["SourceResidentNewRent"]
+        src_resident_info["Deposit"] = input_row["SourceResidentNewDeposit"]
+
+        self.data_manager.edit_resident_record(
+            new_resident_record=src_resident_info, log_comments="Updating Rent and Deposit of Source UID", copy_db=False
+        )
+        self.data_manager.insert_final_settlement_record(exit_details)
 
         return exit_details, pd.DataFrame([data])
 
     def _destination_room_exit(self, input_row: pd.Series):
+        des_resident_info = self.data_manager.load_residents_info_table(filter_ids=input_row["DestinationEnrollmentID"])
         data = {
             "TransDate": input_row["TransDate"],
             "RentThruDate": input_row["TransDate"],
@@ -243,7 +266,18 @@ class ResidentManager:
             "NewDeposit": input_row["DestinationResidentNewDeposit"],
         }
         exit_details = self._process_resident_exit(row=pd.Series(data), copy_db=False)
+        exit_details["TotalAmountDue"] += data["NewDeposit"] - data["Deposit"]
+        exit_details["NetAmountDue"] = np.nan
         data["TransType"] = "Room Transfer"
+
+        des_resident_info["Rent"] = input_row["SourceResidentNewRent"]
+        des_resident_info["Deposit"] = input_row["SourceResidentNewDeposit"]
+
+        self.data_manager.edit_resident_record(
+            new_resident_record=des_resident_info, log_comments="Updating Rent and Deposit of Source UID", copy_db=False
+        )
+        self.data_manager.insert_final_settlement_record(exit_details)
+
         return exit_details, pd.DataFrame([data])
 
     def _entry_in_destination(self, input_row: pd.Series, src_exit_details: pd.DataFrame):
@@ -255,12 +289,13 @@ class ResidentManager:
             f"{self.room_id}": input_row["DestinationRoomNo"],
             "RoomElectricityReading": input_row["DestinationElectReading"],
             "TransType": "entry",
-            "PrevDueAmount": (src_exit_details["TotalAmountDue"] - src_exit_details["AdditionalCharges"]).squeeze(),
-            "AdditionalCharges": src_exit_details["AdditionalCharges"].squeeze(),
+            "PrevDueAmount": (src_exit_details["TotalAmountDue"]).squeeze(),
+            "AdditionalCharges": 0,
             "Comments": input_row["Comments"],
             "LastRentCalcDate": input_row["TransDate"],
         }
-        return self._process_resident_entry(row=pd.Series(data), copy_db=False)
+        self._process_resident_entry(row=pd.Series(data), copy_db=False)
+        return
 
     def _entry_in_source(self, input_row: pd.Series, desti_exit_details: pd.DataFrame):
         data = {
@@ -295,37 +330,12 @@ class ResidentManager:
             trans_date=trans_dt_time,
             room_elect_reading=old_meter_reading,
         )
-        empty_rooms = curr_status[curr_status[self.uid].isna()]
-        occupied_room = curr_status[curr_status[self.uid].notna()]
-        occupied_room = pd.concat([occupied_room, room_adjusted[occupied_room.columns]]).drop_duplicates(subset=[self.uid], keep="last")
-        curr_status = pd.concat([empty_rooms, occupied_room])
+        curr_status = curr_status[curr_status[self.room_id] != room]
+        curr_status = pd.concat([curr_status, room_adjusted[curr_status.columns]])
+
         curr_status.loc[curr_status[self.room_id] == room, "RoomElectricityReading"] = new_meter_reading
         self.data_manager.update_current_status(new_status=curr_status)
 
-        return
-
-    @log_and_backup()
-    def record_payment(self, row: pd.Series, log_comments: Optional[str] = None):
-        valid_input = self.data_manager.prepare_validate_payment(row)
-        curr_status = self.data_manager.load_current_status()
-        prev_due = curr_status.loc[curr_status[self.uid] == valid_input[self.uid], "PrevDueAmount"].squeeze()
-
-        curr_status.loc[curr_status[self.uid] == valid_input[self.uid], "PrevDueAmount"] = prev_due - valid_input["PaymentAmount"]
-        self.data_manager.update_current_status(new_status=curr_status)
-
-        transaction = self.data_manager.load_transactions_table()
-        transaction = pd.DataFrame(columns=transaction.columns)
-        data = {
-            "TransDate": valid_input["TransDate"],
-            f"{self.uid}": valid_input[self.uid],
-            f"{self.bed_id}": valid_input[self.bed_id],
-            f"{self.room_id}": valid_input[self.room_id],
-            "PaymentReceived": valid_input["PaymentAmount"],
-            "TransType": "Payment",
-            "Comments": valid_input["Comments"],
-        }
-        transaction = pd.concat([transaction, pd.DataFrame([data])])
-        self.data_manager.insert_transaction(input_df=transaction)
         return
 
     def calculate_rent(

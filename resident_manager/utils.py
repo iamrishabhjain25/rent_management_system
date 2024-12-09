@@ -47,13 +47,15 @@ def log_and_backup(
             if data is not None:
                 if isinstance(data, pd.Series):
                     data = data.to_frame().T
-
                 if bed_id_col in data.columns:
                     data[room_id_col] = data[bed_id_col].str.replace(r"\D", "", regex=True)
-                    bed_ids = "_".join(data[bed_id_col].tolist())
+                    bed_available = data[bed_id_col].tolist()
+                    bed_ids = bed_available[0] if (len(bed_available) == 1) else np.nan
 
                 if room_id_col in data.columns:
-                    rooms = room if room else "_".join(data[room_id_col].tolist())
+                    rooms_available = data[room_id_col].tolist()
+                    rooms_available = rooms_available[0] if (len(rooms_available) == 1) else np.nan
+                    rooms = room if room else rooms_available
 
                 if uid_col in data.columns:
                     uids = "_".join(data[uid_col].tolist())
@@ -280,11 +282,18 @@ class DataManager:
         filter_cols: Optional[str | list[str]] = None,
     ) -> pd.DataFrame:
         """Loads the residents information given the IDs and columns filter"""
+
+        if isinstance(filter_ids, str):
+            filter_ids = [filter_ids]
+
+        if isinstance(filter_cols, str):
+            filter_ids = [filter_cols]
+
         df = self.db_handler.load_table(self.confs.residents_tbl, parse_dates=self.confs.date_cols_residents_tbl)
         df_out = df
         if filter_ids:
             if not all([uid in df[self.uid].values for uid in filter_ids]):
-                raise ValueError("uids in filter uids not found in residents database")
+                raise ValueError(f"uids in filter uids not found in residents database. {filter_ids}")
 
             df_out = df_out[df_out[self.uid].isin(filter_ids)]
 
@@ -397,9 +406,9 @@ class DataManager:
         return True
 
     @log_and_backup()
-    def edit_resident_record(self, input_df, log_comments: Optional[str] = None):
+    def edit_resident_record(self, new_resident_record: pd.DataFrame, log_comments: Optional[str] = None):
         all_records = self.load_residents_info_table()
-        new_record = self.prepare_and_validate_resident_input(input_df, check_if_exists_in_old=None)
+        new_record = self.prepare_and_validate_resident_input(new_resident_record, check_if_exists_in_old=None)
 
         for col in all_records.columns:
             if col not in [self.uid]:
@@ -427,14 +436,69 @@ class DataManager:
 
         return all(a_id in valid_ids for a_id in bed_ids)
 
+    def validate_columns_or_index(
+            self,
+            data: pd.DataFrame | pd.Series,
+            mandatory_cols: Sequence[str],
+            if_missing: Literal["raise", "coerce"] = "raise",
+            fill_value: dict | Any = np.nan
+    ) -> pd.DataFrame | pd.Series:
+
+        """
+        Validates whether mandatory columns or index exist in the given data.
+
+        Parameters:
+        - data: pd.DataFrame or pd.Series
+            The input data to validate.
+        - mandatory_cols: Sequence[str]
+            List of mandatory columns to check.
+        - if_missing: Literal["raise", "coerce"]
+            Action to take if columns are missing: "raise" or "coerce".
+        - fill_value: dict | Any, default np.nan
+            Value(s) to fill missing columns when if_missing="coerce".
+            Can be a scalar or a dictionary mapping column names to values.
+
+        Returns:
+        - pd.DataFrame or pd.Series
+            The updated data with missing columns handled.
+        """
+        if not isinstance(data, (pd.Series, pd.DataFrame)):
+            raise ValueError("data must be an instance of pd.Series or pd.DataFrame")
+
+        is_series = isinstance(data, pd.Series)
+
+        if is_series:
+            data = data.to_frame().T    # type: ignore
+
+        cols_present = set(data.columns.tolist())   # type: ignore
+        missing_cols = [col for col in mandatory_cols if col not in cols_present]
+
+        if missing_cols:
+            if if_missing == "raise":
+                raise ValueError(f"Mandatory columns/index missing: {missing_cols}")
+
+            # Handle missing columns
+            for col in missing_cols:
+                data[col] = fill_value[col] if isinstance(fill_value, dict) and col in fill_value else fill_value
+
+        return data.squeeze() if is_series else data    # type: ignore
+
     def convert_data_types(
         self,
-        input_df: pd.DataFrame,
+        data: pd.DataFrame | pd.Series,
         date_cols: Optional[str | list[str]] = None,
         float_cols: Optional[str | list[str]] = None,
         int_cols: Optional[str | list[str]] = None,
         str_cols: Optional[str | list[str]] = None,
-    ):
+    ) -> pd.DataFrame | pd.Series:
+
+        if not isinstance(data, (pd.Series, pd.DataFrame)):
+            raise ValueError("data can only be an instance of pd.Series or pd.DataFrame")
+
+        isSeries = False
+        if isinstance(data, pd.Series):
+            isSeries = True
+            data = data.to_frame().T
 
         date_cols = self._coerce_to_list(date_cols)
         float_cols = self._coerce_to_list(float_cols)
@@ -442,15 +506,19 @@ class DataManager:
         str_cols = self._coerce_to_list(str_cols)
 
         for a_col in int_cols:
-            input_df[a_col] = pd.to_numeric(input_df[a_col], errors="raise", downcast="integer")
+            if a_col in data.columns:
+                data[a_col] = pd.to_numeric(data[a_col], errors="raise", downcast="integer")
         for a_col in date_cols:
-            input_df[a_col] = pd.to_datetime(input_df[a_col])
+            if a_col in data.columns:
+                data[a_col] = pd.to_datetime(data[a_col])
         for a_col in float_cols:
-            input_df[a_col] = pd.to_numeric(input_df[a_col], errors="raise").astype("float")
+            if a_col in data.columns:
+                data[a_col] = pd.to_numeric(data[a_col], errors="raise").astype("float")
         for a_col in str_cols:
-            input_df[a_col] = input_df[a_col].astype("string")
+            if a_col in data.columns:
+                data[a_col] = data[a_col].astype("string")
 
-        return input_df
+        return data.squeeze() if isSeries else data
 
     def string_colum_checks(
         self,
@@ -608,7 +676,7 @@ class DataManager:
         date_cols = self.confs.date_cols_residents_tbl
         float_cols = self.confs.float_cols_residents_tbl
         str_cols = [col for col in data.columns if col not in date_cols + float_cols]
-        data = self.convert_data_types(input_df=data, date_cols=date_cols, float_cols=float_cols, str_cols=str_cols)
+        data = self.convert_data_types(data=data, date_cols=date_cols, float_cols=float_cols, str_cols=str_cols)    # type: ignore
 
         self.string_colum_checks(data=data, str_cols=[self.uid], allow_nan_cols=None, allow_duplicates=False)
         self.float_colum_checks(data=data, float_cols=float_cols, allow_nan_cols=None, allow_zero=False)
@@ -638,7 +706,7 @@ class DataManager:
         float_cols = self.confs.float_cols_electricity_tbl
         str_cols = [col for col in data.columns if col not in date_cols + float_cols]
 
-        data = self.convert_data_types(input_df=data, date_cols=date_cols, float_cols=float_cols, str_cols=str_cols)
+        data = self.convert_data_types(data=data, date_cols=date_cols, float_cols=float_cols, str_cols=str_cols)    # type: ignore
         self.float_colum_checks(data=data, float_cols=float_cols, allow_zero=True)
         self.date_colum_checks(
             data=data,
@@ -654,42 +722,74 @@ class DataManager:
 
         return valid_data
 
-    def prepare_and_validate_trans_input(
-        self,
-        data: pd.DataFrame,
-        check_if_exists_in_old: Optional[str | Sequence[str]] = None,
-    ) -> pd.DataFrame:
+    def validate_entry_transaction(self, row: pd.Series):
+        mandatory_cols = [self.uid, self.bed_id, "TransDate", "TransType", "RoomElectricityReading", "Comments"]
+        self.validate_columns_or_index(data=row, mandatory_cols=mandatory_cols)
+        return self._validate_entry_exit(row)
 
-        curr_status = self.load_current_status(filter_bedId=data[self.bed_id].values.tolist()).squeeze()
+    def validate_exit_transaction(self, row: pd.Series):
+        mandatory_cols = [self.uid, self.bed_id, "TransDate", "TransType", "RoomElectricityReading",
+                          "PrevDueAmount", "AdditionalCharges", "RentThruDate", "Comments"]
+        self.validate_columns_or_index(data=row, mandatory_cols=mandatory_cols)
+        return self._validate_entry_exit(row)
 
-        if self.room_id not in data.columns:
-            data[self.room_id] = data[self.bed_id].str.replace(r"\D", "", regex=True)
+    def _validate_entry_exit(self, row: pd.Series):
+        if self.room_id not in row.index:
+            row[f"{self.room_id}"] = pd.Series(row[self.bed_id]).str.replace(r"\D", "", regex=True).iloc[0]
 
         date_cols = self.confs.date_cols_transactions_tbl
         float_cols = self.confs.float_cols_transactions_tbl
-        str_cols = [col for col in data.columns if col not in date_cols + float_cols]
+        str_cols = [col for col in row.index if col not in date_cols + float_cols]
+        row = self.convert_data_types(data=row, date_cols=date_cols, float_cols=float_cols, str_cols=str_cols)  # type: ignore
+        self.check_valid_bedID(row[self.bed_id], valid_ids=self.confs.valid_bedIDs)
 
-        data = self.convert_data_types(input_df=data, date_cols=date_cols, float_cols=float_cols, str_cols=str_cols)
-        self.string_colum_checks(data=data, str_cols=str_cols, allow_duplicates=True)
+        if (row[self.uid] == "") or pd.isna(row[self.uid]):
+            raise ValueError(f"{self.uid} cannot be null or empty string")
 
-        self.date_colum_checks(data=data, date_cols=["TransDate"], allow_nan=False, allow_duplicates=False)
+        if pd.isna(row["RoomElectricityReading"]):
+            raise ValueError("RoomElectricityReading cannot be nan")
 
-        if not pd.api.types.is_datetime64_any_dtype(data["RentThruDate"]):
-            raise ValueError("RentThruDate columns is not a datetime column")
+        prev_reading = self.load_current_status(filter_bedId=row[self.bed_id], filter_cols=["RoomElectricityReading"]).squeeze()
+        if row["RoomElectricityReading"] < prev_reading:
+            raise ValueError(f"RoomElectricityReading ({row['RoomElectricityReading']}) cannot be less than previous reading ({prev_reading})")
 
-        if "RentThruDate" not in data.columns:
-            raise ValueError("Columns RentThruDate not found in transaction data")
+        return row
 
-        self.float_colum_checks(data=data, float_cols=float_cols, allow_zero=True)
-        self.check_valid_bedID(data[self.bed_id].values.tolist(), valid_ids=self.confs.valid_bedIDs)
+    def validate_payment_transaction(self, row: pd.Series):
+        curr_status = self.load_current_status()
+        mandatory_cols = [self.uid, self.bed_id, "TransDate", "TransType", "PaymentAmount", "Comments"]
+        self.validate_columns_or_index(data=row, mandatory_cols=mandatory_cols, if_missing="raise")
 
-        if (data["RoomElectricityReading"] < curr_status["RoomElectricityReading"]).any():
-            raise ValueError(
-                f"Invalid Transaction : Room electricity reading at transaction ({data['RoomElectricityReading']}) "
-                f"cannot be less than last Room electricity reading ({curr_status['RoomElectricityReading']})"
-            )
+        if self.room_id not in row.index:
+            row[f"{self.room_id}"] = pd.Series(row[self.bed_id]).str.replace(r"\D", "", regex=True).iloc[0]
 
-        return data
+        row["TransDate"] = pd.to_datetime(row["TransDate"])
+        row["PaymentAmount"] = pd.to_numeric(row["PaymentAmount"], errors="coerce")
+
+        if pd.isna(row["PaymentAmount"]):
+            ValueError("Cannot have nan in Payment Amount")
+
+        if row[f"{self.uid}"] not in curr_status[self.uid].values:
+            raise ValueError("cannot accept a payment for a resident who is not staying")
+        return row
+
+    def validate_transaction(self, row: pd.Series):
+
+        trans_type = row["TransType"]
+
+        if trans_type not in ["entry", "exit", "payment"]:
+            raise ValueError("Found Invalid Transaction. Cannot Validate")
+
+        if trans_type == "entry":
+            valid_row = self.validate_entry_transaction(row=row)
+
+        if trans_type == "exit":
+            valid_row = self.validate_exit_transaction(row=row)
+
+        if trans_type == "payment":
+            valid_row = self.validate_payment_transaction(row=row)
+
+        return valid_row
 
     def prepare_and_validate_status(self, data: pd.DataFrame) -> pd.DataFrame:
 
@@ -713,30 +813,7 @@ class DataManager:
 
         return data.sort_values([self.room_id], key=lambda x: x.astype(int))
 
-    def prepare_validate_payment(self, row: pd.Series):
-
-        curr_status = self.load_current_status()
-
-        mandatory_cols = [self.uid, self.bed_id, "TransDate", "PaymentAmount", "Comments"]
-        not_available = [col for col in mandatory_cols if col not in row.index]
-        if not_available:
-            raise ValueError(f"Column missing from data {not_available}")
-
-        if self.room_id not in row.index:
-            row[f"{self.room_id}"] = pd.Series(row[self.bed_id]).str.replace(r"\D", "", regex=True).iloc[0]
-
-        row["TransDate"] = pd.to_datetime(row["TransDate"])
-        row["PaymentAmount"] = pd.to_numeric(row["PaymentAmount"], errors="coerce")
-
-        if pd.isna(row["PaymentAmount"]):
-            ValueError("Cannot have nan in Payment Amount")
-
-        if row[f"{self.uid}"] not in curr_status[self.uid].values:
-            raise ValueError("cannot accept a payment for a resident who is not staying")
-
-        return row
-
-    def prepare_validate_room_transfer_input(self, input_df) -> pd.DataFrame:
+    def prepare_validate_room_transfer_input(self, row_input: pd.Series) -> pd.Series:
 
         current_status = self.load_current_status()
         residents_info = self.load_residents_info_table()
@@ -756,63 +833,62 @@ class DataManager:
         ]
         str_cols = ["TransType", "SourceBedId", "SourceEnrollmentID", "DestinationBedId", "DestinationEnrollmentID", "Comments"]
 
-        input_df = self.convert_data_types(input_df=input_df, date_cols=date_cols, float_cols=float_cols, str_cols=str_cols)
+        row_input = self.convert_data_types(data=row_input, date_cols=date_cols, float_cols=float_cols, str_cols=str_cols)    # type: ignore
 
-        input_df["SourceRoomNo"] = input_df["SourceBedId"].str.replace(r"\D", "", regex=True)
-        input_df["DestinationRoomNo"] = input_df["DestinationBedId"].str.replace(r"\D", "", regex=True)
-        input_df["IsSwapping"] = np.where(input_df["TransType"] == "Swapping", True, False)
+        row_input["SourceRoomNo"] = pd.Series(row_input["SourceBedId"]).str.replace(r"\D", "", regex=True).iloc[0]
+        row_input["DestinationRoomNo"] = pd.Series(row_input["DestinationBedId"]).str.replace(r"\D", "", regex=True).iloc[0]
+        row_input["IsSwapping"] = True if row_input.get("TransType", None) == "Swapping" else False
 
-        for _, row in input_df.iterrows():
-            source_bed = row["SourceBedId"]
-            destination_bed = row["DestinationBedId"]
-            transfer_type = row["TransType"]
-            swap = row["IsSwapping"]
+        source_bed = row_input["SourceBedId"]
+        destination_bed = row_input["DestinationBedId"]
+        transfer_type = row_input["TransType"]
+        swap = row_input["IsSwapping"]
 
-            self.check_valid_bedID(bed_id=[source_bed, destination_bed], valid_ids=self.confs.valid_bedIDs)
+        self.check_valid_bedID(bed_id=[source_bed, destination_bed], valid_ids=self.confs.valid_bedIDs)
 
-            if source_bed == destination_bed:
-                raise ValueError("Source and Destination Bed IDs cannot be the same.")
+        if source_bed == destination_bed:
+            raise ValueError("Source and Destination Bed IDs cannot be the same.")
 
-            if row["TransDate"] > dt.datetime.now():
-                raise ValueError("Transfer date cannot be in the future.")
+        if row_input["TransDate"] > dt.datetime.now():
+            raise ValueError("Transfer date cannot be in the future.")
 
-            prev_src_reading = current_status.loc[current_status[self.bed_id] == source_bed, "RoomElectricityReading"].squeeze()
-            if (row["SourceElectReading"] < prev_src_reading) or (pd.isna(row["SourceElectReading"])):
-                raise ValueError("Source electricity reading cannot be less than the previous reading or cannot be nan.")
+        prev_src_reading = current_status.loc[current_status[self.bed_id] == source_bed, "RoomElectricityReading"].squeeze()
+        if (row_input["SourceElectReading"] < prev_src_reading) or (pd.isna(row_input["SourceElectReading"])):
+            raise ValueError("Source electricity reading cannot be less than the previous reading or cannot be nan.")
 
-            prev_dest_reading = current_status.loc[current_status[self.bed_id] == destination_bed, "RoomElectricityReading"].squeeze()
-            if (row["DestinationElectReading"] < prev_dest_reading) or (pd.isna(row["DestinationElectReading"])):
-                raise ValueError("Destination electricity reading cannot be less than the previous reading.")
+        prev_dest_reading = current_status.loc[current_status[self.bed_id] == destination_bed, "RoomElectricityReading"].squeeze()
+        if (row_input["DestinationElectReading"] < prev_dest_reading) or (pd.isna(row_input["DestinationElectReading"])):
+            raise ValueError("Destination electricity reading cannot be less than the previous reading.")
 
-            if transfer_type not in ["Moving to Empty Bed", "Swapping"]:
-                raise ValueError(f"Invalid TransferType: {transfer_type}")
+        if transfer_type not in ["Moving to Empty Bed", "Swapping"]:
+            raise ValueError(f"Invalid TransferType: {transfer_type}")
 
-            if not swap and not pd.isna(row["DestinationEnrollmentID"]):
+        if not swap and not pd.isna(row_input["DestinationEnrollmentID"]):
+            raise ValueError(
+                "Destination Enrollment ID should not be provided when moving to an empty bed. " f"Found: {row_input['DestinationEnrollmentID']}"
+            )
+
+        if swap and not row_input["DestinationEnrollmentID"]:
+            raise ValueError("Destination Enrollment ID is required when swapping.")
+
+        src_rent_deposit = residents_info.loc[residents_info[self.uid] == row_input["SourceEnrollmentID"], ["Rent", "Deposit"]].to_numpy()
+        src_input_rent_deposit = row_input[["SourceResidentOldRent", "SourceResidentOldDeposit"]].to_numpy()
+        if not (src_input_rent_deposit == src_rent_deposit).all():
+            raise ValueError(
+                f"Source Rent/Deposit does not match. value is database '{src_rent_deposit}'. "
+                f"Values in input '{src_input_rent_deposit}'"
+            )    # type: ignore
+
+        if row_input["TransType"] == "Swapping":
+            des_rent_deposit = residents_info.loc[residents_info[self.uid] == row_input["DestinationEnrollmentID"], ["Rent", "Deposit"]].to_numpy()
+            des_input_rent_deposit = row_input[["DestinationResidentOldRent", "DestinationResidentOldDeposit"]].to_numpy()
+            if not (des_input_rent_deposit == des_rent_deposit).all():
                 raise ValueError(
-                    "Destination Enrollment ID should not be provided when moving to an empty bed. " f"Found: {row['DestinationEnrollmentID']}"
-                )
+                    f"Destination Rent/Deposit does not match. value is database '{des_rent_deposit}'. "
+                    f"Values in input '{des_input_rent_deposit}'"
+                )    # type: ignore
 
-            if swap and not row["DestinationEnrollmentID"]:
-                raise ValueError("Destination Enrollment ID is required when swapping.")
-
-            src_rent_deposit = residents_info.loc[residents_info[self.uid] == row["SourceEnrollmentID"], ["Rent", "Deposit"]].squeeze().values
-            src_input_rent_deposit = row[["SourceResidentOldRent", "SourceResidentOldDeposit"]].values
-            if not all(src_input_rent_deposit == src_rent_deposit):
-                raise ValueError(
-                    f"Source Rent/Deposit does not match. value is database '{src_rent_deposit.values}'. "
-                    f"Values in input '{src_input_rent_deposit.values}'"
-                )
-
-            if row["TransType"] == "Swapping":
-                des_rent_deposit = residents_info.loc[residents_info[self.uid] == row["DestinationEnrollmentID"], ["Rent", "Deposit"]].squeeze()
-                des_input_rent_deposit = row[["DestinationResidentOldRent", "DestinationResidentOldDeposit"]].values
-                if not all(des_input_rent_deposit == des_rent_deposit):
-                    raise ValueError(
-                        f"Destination Rent/Deposit does not match. value is database '{des_rent_deposit.values}'. "
-                        f"Values in input '{des_input_rent_deposit.values}'"
-                    )
-
-        return input_df
+        return row_input
 
     def prepare_validate_final_setllement(self):
         pass

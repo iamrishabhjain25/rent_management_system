@@ -250,7 +250,7 @@ class ResidenceManagementStreamlit:
             if st.button("Update"):
                 try:
                     with st.spinner("Processing, please wait"):
-                        self.db_manager.data_manager.edit_resident_record(input_df=updated_data_df, log_comments=log_comments)
+                        self.db_manager.data_manager.edit_resident_record(new_resident_record=updated_data_df, log_comments=log_comments)
                     st.success("Resident record successfully updated in the database.")
                     st.session_state.resident_data = None
                 except Exception as e:
@@ -468,7 +468,7 @@ class ResidenceManagementStreamlit:
         if st.button("Process Transaction"):
             try:
                 with st.spinner("Processing transaction, please wait..."):
-                    exit_details = self.db_manager.process_transaction(input_df=data_df, log_comments=log_comments)
+                    exit_details = self.db_manager.process_transaction(transaction=pd.Series(data), log_comments=log_comments)
                 st.success(f"{trans_type} Transaction processed Successfully")
                 if exit_details is not None:
                     st.dataframe(exit_details.T)
@@ -590,7 +590,7 @@ class ResidenceManagementStreamlit:
                 try:
                     with st.spinner("Processing transfer, please wait..."):
                         # pd.DataFrame([data]).to_csv("temp_room_trnsfer.csv", index=False)
-                        self.db_manager.process_room_transfers(input_df=pd.DataFrame([data]))
+                        self.db_manager.process_room_transfers(row=pd.Series(data))
                     st.success("Transfer successfully processed")
                 except Exception as e:
                     st.error(f"Error: {e}")
@@ -661,6 +661,9 @@ class ResidenceManagementStreamlit:
                 df[self.db_manager.confs.date_cols_transactions_tbl] = df[self.db_manager.confs.date_cols_transactions_tbl].apply(
                     lambda x: x.dt.strftime("%d-%b-%Y")
                 )
+                cols_first = ["TransDate", "BedID", "RoomNo", "Name", "EnrollmentID"]
+                all_cols = cols_first + [col for col in df.columns if col not in cols_first]
+                df = df[all_cols]
 
             case self.db_manager.confs.final_settlement_tbl:
                 df = self.db_manager.data_manager.load_final_settlement_table()
@@ -824,6 +827,7 @@ class ResidenceManagementStreamlit:
             f"{self.db_manager.uid}": resident_uid,
             f"{self.db_manager.bed_id}": curr_status.loc[curr_status[self.db_manager.uid] == resident_uid, f"{self.db_manager.bed_id}"].squeeze(),
             f"{self.db_manager.room_id}": curr_status.loc[curr_status[self.db_manager.uid] == resident_uid, f"{self.db_manager.room_id}"].squeeze(),
+            "TransType": "payment",
             "TransDate": trans_dt_time,
             "PaymentAmount": pay_amt,
             "Comments": log_comments,
@@ -864,7 +868,6 @@ def main():
         "Update Electricity Record",
         "Entry/Exit of Form",
         "Room Transfer",
-        "View Current Tables",
         "Calculate Rent",
         "Record Payment",
         "Electricity Meter Change",
