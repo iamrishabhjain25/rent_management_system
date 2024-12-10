@@ -462,6 +462,7 @@ class DataManager:
         - pd.DataFrame or pd.Series
             The updated data with missing columns handled.
         """
+        data = data.copy()
         if not isinstance(data, (pd.Series, pd.DataFrame)):
             raise ValueError("data must be an instance of pd.Series or pd.DataFrame")
 
@@ -491,7 +492,7 @@ class DataManager:
         int_cols: Optional[str | list[str]] = None,
         str_cols: Optional[str | list[str]] = None,
     ) -> pd.DataFrame | pd.Series:
-
+        data = data.copy()
         if not isinstance(data, (pd.Series, pd.DataFrame)):
             raise ValueError("data can only be an instance of pd.Series or pd.DataFrame")
 
@@ -723,11 +724,13 @@ class DataManager:
         return valid_data
 
     def validate_entry_transaction(self, row: pd.Series):
+        row = row.copy()
         mandatory_cols = [self.uid, self.bed_id, "TransDate", "TransType", "RoomElectricityReading", "Comments"]
         self.validate_columns_or_index(data=row, mandatory_cols=mandatory_cols)
         return self._validate_entry_exit(row)
 
     def validate_exit_transaction(self, row: pd.Series):
+        row = row.copy()
         mandatory_cols = [self.uid, self.bed_id, "TransDate", "TransType", "RoomElectricityReading",
                           "PrevDueAmount", "AdditionalCharges", "RentThruDate", "Comments"]
         self.validate_columns_or_index(data=row, mandatory_cols=mandatory_cols)
@@ -756,6 +759,7 @@ class DataManager:
         return row
 
     def validate_payment_transaction(self, row: pd.Series):
+        row = row.copy()
         curr_status = self.load_current_status()
         mandatory_cols = [self.uid, self.bed_id, "TransDate", "TransType", "TransactionAmount", "Comments"]
         self.validate_columns_or_index(data=row, mandatory_cols=mandatory_cols, if_missing="raise")
@@ -792,7 +796,7 @@ class DataManager:
         return valid_row
 
     def prepare_and_validate_status(self, data: pd.DataFrame) -> pd.DataFrame:
-
+        data = data.copy()
         old_status = self.load_current_status()
 
         date_cols = self.confs.date_cols_status_tbl
@@ -822,7 +826,7 @@ class DataManager:
         return data.sort_values([self.room_id], key=lambda x: x.astype(int))
 
     def prepare_validate_room_transfer_input(self, row_input: pd.Series) -> pd.Series:
-
+        row_input = row_input.copy()
         current_status = self.load_current_status()
         residents_info = self.load_residents_info_table()
 
