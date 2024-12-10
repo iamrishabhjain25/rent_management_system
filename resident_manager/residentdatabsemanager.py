@@ -31,7 +31,8 @@ class ResidentManager:
         if trans_type in ["payment", "charges"]:
             res = self._process_resident_payment(row=valid_transaction, log_comments=log_comments)
 
-        self.data_manager.insert_transaction(input_df=valid_transaction.to_frame().T)
+        valid_transaction_df = pd.DataFrame([valid_transaction.to_dict()])
+        self.data_manager.insert_transaction(input_df=valid_transaction_df)
         return res
 
     @log_and_backup()
@@ -144,17 +145,20 @@ class ResidentManager:
         curr_status = curr_status[curr_status[self.room_id] != row[self.room_id]]
         curr_status = pd.concat([curr_status, adj_room_status[curr_status.columns]])
 
-        row_df = row.to_frame().T
-        row_df["CumulativeElectConsumption"] = 0
+        row_dict = row.to_dict()
+        row_dict["CumulativeElectConsumption"] = 0.0
         admission_date = self.data_manager.load_residents_info_table(filter_ids=[row[self.uid]], filter_cols=["RentStartDate"]).squeeze()
-        row_df["LastRentCalcDate"] = row["LastRentCalcDate"] if "LastRentCalcDate" in row.index else (admission_date - dt.timedelta(days=1))
-        row_df["LastElectricityCalcDate"] = row["TransDate"]
+        row_dict["LastRentCalcDate"] = row["LastRentCalcDate"] if "LastRentCalcDate" in row.index else (admission_date - dt.timedelta(days=1))
+        row_dict["LastElectricityCalcDate"] = row["TransDate"]
 
         for col in ["PrevDueAmount", "AdditionalCharges"]:
-            if col not in row_df.columns:
+            if col not in row_dict:
                 row[col] = 0.0
+
+        row_dict = {key: val for key, val in row_dict.items() if key in curr_status.columns}
         # Updating new entry alredy staying
-        curr_status = pd.concat([curr_status, row_df[curr_status.columns]]).drop_duplicates(subset=[self.bed_id], keep="last")
+        curr_status = pd.concat([curr_status, pd.DataFrame([row_dict])]).drop_duplicates(subset=[self.bed_id], keep="last")
+
         self.data_manager.update_current_status(new_status=curr_status)
 
         return
@@ -297,7 +301,7 @@ class ResidentManager:
             "RoomElectricityReading": input_row["DestinationElectReading"],
             "TransType": "entry",
             "PrevDueAmount": (src_exit_details["TotalAmountDue"]).squeeze(),
-            "AdditionalCharges": 0,
+            "AdditionalCharges": 0.0,
             "Comments": input_row["Comments"],
             "LastRentCalcDate": input_row["TransDate"],
         }
@@ -397,7 +401,7 @@ class ResidentManager:
         occupied_beds["PrevElectricityReading"] = occupied_beds["RoomElectricityReading"]
         occupied_beds["RoomElectricityReading"] = occupied_beds["EOMElectReading"]
         occupied_beds["UnitsConsumed"] = occupied_beds["CumulativeElectConsumption"]
-        occupied_beds["CumulativeElectConsumption"] = 0
+        occupied_beds["CumulativeElectConsumption"] = 0.0
         occupied_beds["ElectricityCharges"] = occupied_beds["UnitsConsumed"] * self.confs.elect_rate
         occupied_beds["PrevElectricityCalcDate"] = occupied_beds["LastElectricityCalcDate"]
         occupied_beds["LastElectricityCalcDate"] = eom_rent_calc_date
@@ -429,7 +433,7 @@ class ResidentManager:
 
         # Updating PrevDue and additional charges for new status
         occupied_beds["PrevDueAmount"] = occupied_beds["TotalAmountDue"]
-        occupied_beds["AdditionalCharges"] = 0
+        occupied_beds["AdditionalCharges"] = 0.0
 
         # new status
         new_status = pd.concat([empty_beds, occupied_beds])

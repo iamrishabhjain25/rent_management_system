@@ -793,7 +793,15 @@ class DataManager:
 
     def prepare_and_validate_status(self, data: pd.DataFrame) -> pd.DataFrame:
 
+        old_status = self.load_current_status()
+
+        date_cols = self.confs.date_cols_status_tbl
+        float_cols = self.confs.float_cols_status_tbl
+        str_cols = [col for col in data.columns if col not in date_cols + float_cols]
+
         self.check_valid_bedID(data[self.bed_id].values.tolist(), valid_ids=self.confs.valid_bedIDs)
+        data = self.convert_data_types(data=data,date_cols=date_cols, float_cols=float_cols, str_cols=str_cols)     # type: ignore
+        data = self.validate_df_new_with_old(old_df=old_status, new_df=data, check_if_exists_in_old=None)
 
         if len(data) != len(self.confs.valid_bedIDs):
             raise ValueError(
@@ -832,7 +840,6 @@ class DataManager:
             "DestinationResidentNewDeposit",
         ]
         str_cols = ["TransType", "SourceBedId", "SourceEnrollmentID", "DestinationBedId", "DestinationEnrollmentID", "Comments"]
-
         row_input = self.convert_data_types(data=row_input, date_cols=date_cols, float_cols=float_cols, str_cols=str_cols)    # type: ignore
 
         row_input["SourceRoomNo"] = pd.Series(row_input["SourceBedId"]).str.replace(r"\D", "", regex=True).iloc[0]

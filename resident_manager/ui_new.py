@@ -396,6 +396,7 @@ class ResidenceManagementStreamlit:
 
             prev_due = curr_status.loc[curr_status[self.db_manager.bed_id] == bed_id, "PrevDueAmount"].squeeze()
             additional_charges = curr_status.loc[curr_status[self.db_manager.bed_id] == bed_id, "AdditionalCharges"].squeeze()
+
             prev_due = st.number_input("Enter any previous rent/electricity due amount.", value=prev_due, disabled=True)
             additional_charges = st.number_input("Enter any additional charges", value=additional_charges, disabled=True)
 

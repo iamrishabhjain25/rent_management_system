@@ -44,6 +44,7 @@ date_cols_logs_tbl = ["Date"]
 
 
 float_cols_residents_tbl = ["Rent", "Deposit"]
+float_cols_status_tbl = ["RoomElectricityReading", "CumulativeElectConsumption", "PrevDueAmount", "AdditionalCharges"]
 float_cols_electricity_tbl = [
     "1",
     "2",
