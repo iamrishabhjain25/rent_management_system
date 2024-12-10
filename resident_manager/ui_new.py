@@ -602,7 +602,7 @@ class ResidenceManagementStreamlit:
                 try:
                     with st.spinner("Processing transfer, please wait..."):
                         # pd.DataFrame([data]).to_csv("temp_room_trnsfer.csv", index=False)
-                        self.db_manager.process_room_transfers(row=pd.Series(data))
+                        self.db_manager.process_room_transfers(row=pd.Series(data), log_comments=comments)
                     st.success("Transfer successfully processed")
                 except Exception as e:
                     st.error(f"Error: {e}")

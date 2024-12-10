@@ -196,7 +196,7 @@ class ResidentManager:
         return room_status
 
     @log_and_backup()
-    def process_room_transfers(self, row: pd.Series):
+    def process_room_transfers(self, row: pd.Series, log_comments: Optional[str] = None):
 
         valid_row = self.data_manager.prepare_validate_room_transfer_input(row_input=row)
 
@@ -412,7 +412,6 @@ class ResidentManager:
             monthly_factor,
             (eom_rent_calc_date.date() - occupied_beds["LastRentCalcDate"].dt.date).dt.days,
         )
-        import pdb; pdb.set_trace()
 
         occupied_beds["RentDue"] = occupied_beds["RentDays"] * occupied_beds["Rent"] / monthly_factor
         occupied_beds["TotalAmountDue"] = (
