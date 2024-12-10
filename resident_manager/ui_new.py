@@ -476,6 +476,7 @@ class ResidenceManagementStreamlit:
                     exit_details = self.db_manager.process_transaction(transaction=pd.Series(data), log_comments=log_comments)
                 st.success(f"{trans_type} Transaction processed Successfully")
                 if exit_details is not None:
+                    exit_details = self.show_final_adjustment(exit_details)
                     st.dataframe(exit_details.T)
             except Exception as e:
                 st.error(f"Error Updating electricity record {e}")
@@ -603,11 +604,14 @@ class ResidenceManagementStreamlit:
 
         return
 
-    def show_final_adjustment(self, exit_details):
-        if not exit_details.empty:
-            st.subheader("Final Adjustment")
-            for col in exit_details.columns:
-                st.write(f"{col}: {exit_details[col].squeeze()}")
+    def show_final_adjustment(self, df):
+        if isinstance(df, pd.DataFrame):
+            if not df.empty:
+                float_cols = df.select_dtypes(include=["float"])
+                df[float_cols.columns] = float_cols.round(2)
+        return df
+
+
 
     def view_current_tables(self):
         self.apply_custom_css()
