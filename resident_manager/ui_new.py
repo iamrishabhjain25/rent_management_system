@@ -611,8 +611,6 @@ class ResidenceManagementStreamlit:
                 df[float_cols.columns] = float_cols.round(2)
         return df
 
-
-
     def view_current_tables(self):
         self.apply_custom_css()
 
@@ -621,6 +619,7 @@ class ResidenceManagementStreamlit:
         cursor = self.db_manager.data_manager.db_handler.connection.cursor()
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
         tables = [tbl[0] for tbl in cursor.fetchall()]
+        tables = ["status"] + [tbl for tbl in tables if tbl not in ["status"]]
         df = None
 
         table_name = st.selectbox("Choose Table name to load", options=tables)
@@ -644,13 +643,11 @@ class ResidenceManagementStreamlit:
             case self.db_manager.confs.residents_tbl:
                 df = self.db_manager.data_manager.load_residents_info_table()
                 df[self.db_manager.confs.date_cols_residents_tbl] = df[self.db_manager.confs.date_cols_residents_tbl].apply(
-                    lambda x: x.dt.strftime("%d-%b-%Y")
-                )
-                df[self.db_manager.room_id] = np.where(
-                    df[self.db_manager.room_id].isna(),
-                    np.nan,
-                    df[self.db_manager.room_id].astype(int),
-                )
+                    lambda x: x.dt.strftime("%d-%b-%Y"))
+                df[self.db_manager.room_id] = np.where(df[self.db_manager.room_id].isna(), np.nan, df[self.db_manager.room_id].astype(int))
+                cols_order = [self.db_manager.uid, self.db_manager.bed_id, "Name", "Rent", "Deposit", "DateofAdmission"]
+                cols_order = cols_order + [col for col in df.columns if col not in cols_order]
+                df = df[cols_order]
 
             case self.db_manager.confs.electricity_tbl:
                 df = self.db_manager.data_manager.load_electricity_table()
@@ -666,11 +663,15 @@ class ResidenceManagementStreamlit:
                     on=self.db_manager.uid,
                     how="left",
                 )
+                df = df.sort_values(["TransDate"], ascending=False)
 
                 df[self.db_manager.confs.date_cols_transactions_tbl] = df[self.db_manager.confs.date_cols_transactions_tbl].apply(
                     lambda x: x.dt.strftime("%d-%b-%Y")
                 )
-                cols_first = ["TransDate", "BedID", "RoomNo", "Name", "EnrollmentID"]
+                cols_first = ["TransDate", self.db_manager.uid, self.db_manager.bed_id, "Name",
+                              "TransType", "TransactionAmount", "RoomElectricityReading",
+                              "PrevDueAmount", "AdditionalCharges", "RentThruDate", "Comments"
+                              ]
                 all_cols = cols_first + [col for col in df.columns if col not in cols_first]
                 df = df[all_cols]
 
@@ -691,13 +692,8 @@ class ResidenceManagementStreamlit:
                 df = df.merge(
                     residents_info[
                         [
-                            "EnrollmentID",
-                            "Name",
-                            "ContactNumber",
-                            "OtherContact",
-                            "FathersContact",
-                            "MothersContact",
-                            "Course",
+                            "EnrollmentID", "Name", "ContactNumber", "OtherContact", "FathersContact", "MothersContact",
+                            "Course", "Rent", "Deposit"
                         ]
                     ],
                     on=self.db_manager.uid,
@@ -712,6 +708,11 @@ class ResidenceManagementStreamlit:
                     np.nan,
                     df[self.db_manager.room_id].astype(int),
                 )
+                cols_order = [self.db_manager.bed_id, self.db_manager.room_id, self.db_manager.uid,
+                              "Name", "Rent", "Deposit", "PrevDueAmount", "AdditionalCharges",
+                              "RoomElectricityReading", "ContactNumber", "OtherContact", "FathersContact"]
+                cols_order = cols_order + [col for col in df.columns if col not in cols_order]
+                df = df[cols_order]
 
             case self.db_manager.confs.logs_tbl:
                 df = self.db_manager.data_manager.load_logs()
