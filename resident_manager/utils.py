@@ -46,7 +46,7 @@ def log_and_backup(
             bed_ids, rooms, uids, errors = "", "", "", ""
             if data is not None:
                 if isinstance(data, pd.Series):
-                    data = data.to_frame().T
+                    data = pd.DataFrame([data.to_dict()])
                 if bed_id_col in data.columns:
                     data[room_id_col] = data[bed_id_col].str.replace(r"\D", "", regex=True)
                     bed_available = data[bed_id_col].tolist()
@@ -468,7 +468,7 @@ class DataManager:
         is_series = isinstance(data, pd.Series)
 
         if is_series:
-            data = data.to_frame().T    # type: ignore
+            data = pd.DataFrame([data.to_dict()])    # type:ignore
 
         cols_present = set(data.columns.tolist())   # type: ignore
         missing_cols = [col for col in mandatory_cols if col not in cols_present]
@@ -498,7 +498,7 @@ class DataManager:
         isSeries = False
         if isinstance(data, pd.Series):
             isSeries = True
-            data = data.to_frame().T
+            data = pd.DataFrame([data.to_dict()])
 
         date_cols = self._coerce_to_list(date_cols)
         float_cols = self._coerce_to_list(float_cols)
@@ -800,7 +800,7 @@ class DataManager:
         str_cols = [col for col in data.columns if col not in date_cols + float_cols]
 
         self.check_valid_bedID(data[self.bed_id].values.tolist(), valid_ids=self.confs.valid_bedIDs)
-        data = self.convert_data_types(data=data,date_cols=date_cols, float_cols=float_cols, str_cols=str_cols)     # type: ignore
+        data = self.convert_data_types(data=data, date_cols=date_cols, float_cols=float_cols, str_cols=str_cols)     # type: ignore
         data = self.validate_df_new_with_old(old_df=old_status, new_df=data, check_if_exists_in_old=None)
 
         if len(data) != len(self.confs.valid_bedIDs):
