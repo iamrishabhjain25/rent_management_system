@@ -179,7 +179,6 @@ class ResidentManager:
             if room_status[room_status[self.uid].isna()]["CumulativeElectConsumption"].notna().any():
                 raise ValueError(f"Empty bed cannot have non nan CumulativeElectConsumption. {empty_bed}")
 
-        room_status = room_status[room_status[self.uid].notna()]
         room_status["TransDate"] = pd.to_datetime(trans_date)
         room_status["NewRoomElectricityReading"] = room_elect_reading
         room_status["RoomElectricityConsumption"] = room_status["NewRoomElectricityReading"] - room_status["RoomElectricityReading"]
