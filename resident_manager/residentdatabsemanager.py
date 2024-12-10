@@ -105,7 +105,7 @@ class ResidentManager:
         row_with_calc["AdditionalCharges"] = prev_charges
         row_with_calc["Comments"] = row["Comments"]
 
-        row_with_calc["RentDays"] = (row_with_calc["RentThruDate"] - row_with_calc["LastRentCalcDate"]).dt.days
+        row_with_calc["RentDays"] = (row_with_calc["RentThruDate"].dt.date - row_with_calc["LastRentCalcDate"].dt.date).dt.days
         row_with_calc["RentDue"] = row_with_calc["RentDays"] * row_with_calc["Rent"] / monthly_factor
         row_with_calc["ElectricityCharges"] = row_with_calc["CumulativeElectConsumption"] * self.confs.elect_rate
 
@@ -218,7 +218,7 @@ class ResidentManager:
         src_resident_info = self.data_manager.load_residents_info_table(filter_ids=input_row["SourceEnrollmentID"])
         data = {
             "TransDate": input_row["TransDate"],
-            "RentThruDate": input_row["TransDate"] -  dt.timedelta(days=1),
+            "RentThruDate": input_row["TransDate"] - dt.timedelta(days=1),
             f"{self.bed_id}": input_row["SourceBedId"],
             f"{self.uid}": input_row["SourceEnrollmentID"],
             f"{self.room_id}": input_row["SourceRoomNo"],
@@ -246,7 +246,7 @@ class ResidentManager:
         src_resident_info["Deposit"] = input_row["SourceResidentNewDeposit"]
 
         self.data_manager.edit_resident_record(
-            new_resident_record=src_resident_info, log_comments="Updating Rent and Deposit of Source UID", copy_db=False
+            row=src_resident_info, log_comments="Updating Rent and Deposit of Source UID", copy_db=False
         )
         self.data_manager.insert_final_settlement_record(exit_details)
 
@@ -284,7 +284,7 @@ class ResidentManager:
         des_resident_info["Deposit"] = input_row["SourceResidentNewDeposit"]
 
         self.data_manager.edit_resident_record(
-            new_resident_record=des_resident_info, log_comments="Updating Rent and Deposit of Source UID", copy_db=False
+            row=des_resident_info, log_comments="Updating Rent and Deposit of Source UID", copy_db=False
         )
         self.data_manager.insert_final_settlement_record(exit_details)
 
@@ -319,7 +319,7 @@ class ResidentManager:
             "PrevDueAmount": (desti_exit_details["TotalAmountDue"] - desti_exit_details["AdditionalCharges"]).squeeze(),
             "AdditionalCharges": desti_exit_details["AdditionalCharges"].squeeze(),
             "Comments": input_row["Comments"],
-            "LastRentCalcDate": input_row["TransDate"]- dt.timedelta(days=1),
+            "LastRentCalcDate": input_row["TransDate"] - dt.timedelta(days=1),
         }
 
         return self._process_resident_entry(row=pd.Series(data), copy_db=False)
@@ -410,8 +410,9 @@ class ResidentManager:
         occupied_beds["RentDays"] = np.where(
             occupied_beds["LastRentCalcDate"] == prev_eom_rent_calc_date,
             monthly_factor,
-            (eom_rent_calc_date - occupied_beds["LastRentCalcDate"]).dt.days,
+            (eom_rent_calc_date.date() - occupied_beds["LastRentCalcDate"].dt.date).dt.days,
         )
+        import pdb; pdb.set_trace()
 
         occupied_beds["RentDue"] = occupied_beds["RentDays"] * occupied_beds["Rent"] / monthly_factor
         occupied_beds["TotalAmountDue"] = (
