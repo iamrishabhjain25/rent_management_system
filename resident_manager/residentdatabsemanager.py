@@ -218,7 +218,7 @@ class ResidentManager:
         src_resident_info = self.data_manager.load_residents_info_table(filter_ids=input_row["SourceEnrollmentID"])
         data = {
             "TransDate": input_row["TransDate"],
-            "RentThruDate": input_row["TransDate"],
+            "RentThruDate": input_row["TransDate"] -  dt.timedelta(days=1),
             f"{self.bed_id}": input_row["SourceBedId"],
             f"{self.uid}": input_row["SourceEnrollmentID"],
             f"{self.room_id}": input_row["SourceRoomNo"],
@@ -256,7 +256,7 @@ class ResidentManager:
         des_resident_info = self.data_manager.load_residents_info_table(filter_ids=input_row["DestinationEnrollmentID"])
         data = {
             "TransDate": input_row["TransDate"],
-            "RentThruDate": input_row["TransDate"],
+            "RentThruDate": input_row["TransDate"] - dt.timedelta(days=1),
             f"{self.bed_id}": input_row["DestinationBedId"],
             f"{self.uid}": input_row["DestinationEnrollmentID"],
             f"{self.room_id}": input_row["DestinationRoomNo"],
@@ -302,7 +302,7 @@ class ResidentManager:
             "PrevDueAmount": (src_exit_details["TotalAmountDue"]).squeeze(),
             "AdditionalCharges": 0.0,
             "Comments": input_row["Comments"],
-            "LastRentCalcDate": input_row["TransDate"],
+            "LastRentCalcDate": input_row["TransDate"] - dt.timedelta(days=1),
         }
         self._process_resident_entry(row=pd.Series(data), copy_db=False)
         return
@@ -319,7 +319,7 @@ class ResidentManager:
             "PrevDueAmount": (desti_exit_details["TotalAmountDue"] - desti_exit_details["AdditionalCharges"]).squeeze(),
             "AdditionalCharges": desti_exit_details["AdditionalCharges"].squeeze(),
             "Comments": input_row["Comments"],
-            "LastRentCalcDate": input_row["TransDate"],
+            "LastRentCalcDate": input_row["TransDate"]- dt.timedelta(days=1),
         }
 
         return self._process_resident_entry(row=pd.Series(data), copy_db=False)
@@ -382,7 +382,7 @@ class ResidentManager:
         if (occupied_beds["LastRentCalcDate"] >= eom_rent_calc_date).any():
             raise ValueError(
                 f"Invalid Calculation: Found LastRentCalcDate >= {eom_rent_calc_date}."
-                " Cannot have an entry of resident in new month before setlling prev month rent."
+                " Cannot have an entry/exit of resident in new month before setlling prev month rent."
             )
 
         # Adding required fields form other tables
