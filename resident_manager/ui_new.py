@@ -251,7 +251,7 @@ class ResidenceManagementStreamlit:
             if st.button("Update"):
                 try:
                     with st.spinner("Processing, please wait"):
-                        self.db_manager.data_manager.edit_resident_record(new_resident_record=updated_data_df, log_comments=log_comments)
+                        self.db_manager.data_manager.edit_resident_record(row=updated_data_df, log_comments=log_comments)
                     st.success("Resident record successfully updated in the database.")
                     st.session_state.resident_data = None
                 except Exception as e:
@@ -402,6 +402,11 @@ class ResidenceManagementStreamlit:
             additional_charges = st.number_input("Enter any additional charges", value=additional_charges, disabled=True)
 
             rent_thru_dt = st.date_input("Charge Rent until", value=datetime.now().date(), format="DD-MM-YYYY")
+            last_rent_calc_dt = self.db_manager.data_manager.load_current_status(filter_bedId=[bed_id], filter_cols=["LastRentCalcDate"]).squeeze()
+            rent_days = (rent_thru_dt - last_rent_calc_dt.date()).days
+            total_rent_days = st.text_input(f"Rent Days since last Rent calculation date {last_rent_calc_dt.strftime('%d-%b-%Y')}",
+                                            value=rent_days, disabled=True)
+
             rent_thru_dt = rent_thru_dt.strftime("%d-%b-%Y")
             comments = st.text_input("Enter any comments or remarks.", value="No Comments")
 
@@ -719,6 +724,8 @@ class ResidenceManagementStreamlit:
 
             case self.db_manager.confs.logs_tbl:
                 df = self.db_manager.data_manager.load_logs()
+                # df = df.sort_values(["Date"], ascending=False)
+                df["Date"] = df["Date"].dt.strftime("%d-%b-%Y %H:%M:%S")
 
         if (df is not None) and (not df.empty):
             st.dataframe(df, height=1100, use_container_width=True)
