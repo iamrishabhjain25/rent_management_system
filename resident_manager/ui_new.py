@@ -11,6 +11,7 @@ import residentdatabsemanager as RDM
 import streamlit as st
 from utils import DatabaseHandler, DataManager
 
+
 st.set_page_config(layout="wide")
 
 
@@ -651,6 +652,7 @@ class ResidenceManagementStreamlit:
 
             case self.db_manager.confs.electricity_tbl:
                 df = self.db_manager.data_manager.load_electricity_table()
+                df = df.sort_values(["Date"], ascending=False)
                 df[self.db_manager.confs.date_cols_electricity_tbl] = df[self.db_manager.confs.date_cols_electricity_tbl].apply(
                     lambda x: x.dt.strftime("%d-%b-%Y %H:%M:%S")
                 )
@@ -677,6 +679,7 @@ class ResidenceManagementStreamlit:
 
             case self.db_manager.confs.final_settlement_tbl:
                 df = self.db_manager.data_manager.load_final_settlement_table()
+                df = df.sort_values(["ExitDate"], ascending=False)
                 df[self.db_manager.confs.date_cols_final_settlement_tbl] = df[self.db_manager.confs.date_cols_final_settlement_tbl].apply(
                     lambda x: x.dt.strftime("%d-%b-%Y")
                 )
