@@ -406,9 +406,9 @@ class DataManager:
         return True
 
     @log_and_backup()
-    def edit_resident_record(self, new_resident_record: pd.DataFrame, log_comments: Optional[str] = None):
+    def edit_resident_record(self, row: pd.DataFrame, log_comments: Optional[str] = None):
         all_records = self.load_residents_info_table()
-        new_record = self.prepare_and_validate_resident_input(new_resident_record, check_if_exists_in_old=None)
+        new_record = self.prepare_and_validate_resident_input(row, check_if_exists_in_old=None)
 
         for col in all_records.columns:
             if col not in [self.uid]:
