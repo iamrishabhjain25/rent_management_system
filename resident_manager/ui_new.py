@@ -46,10 +46,10 @@ class ResidenceManagementStreamlit:
     def new_admission(self):
         """Insert new resident record"""
         st.header("New Admission")
-
         generated_uid = self.db_manager.data_manager.generate_new_uid()
         data = {
             "EnrollmentID": st.text_input("Enrollment ID", value=generated_uid),
+            "Code": st.selectbox("Enter code for this uid", options=["Unavailable", "R", "A"]),
             "BedID": st.selectbox("Select Bed ID", configs.valid_bedIDs).upper(),
             "DateofAdmission": st.date_input("Date of Admission", value=datetime.today(), format="DD-MM-YYYY"),
             "Name": st.text_input("FulName"),
@@ -90,8 +90,7 @@ class ResidenceManagementStreamlit:
         }
         data = pd.DataFrame([data])
         if (data["Rent"] < 5000).any() or (data["Deposit"] < data["Rent"] * 2).any():
-            message = "Warning: Either Rent if less than 5,000 or"
-            " Deposite is less than twice the rent. Are you sure want to continue ?"
+            message = "Warning: Either Rent if less than 5,000 or Deposit is less than twice the rent. Are you sure want to continue ?"
             st.warning(message, icon="⚠️")
 
         log_comments = st.text_input("Log comments for this Activity")
@@ -178,7 +177,6 @@ class ResidenceManagementStreamlit:
             st.session_state.resident_data = None
 
         uid = st.text_input(f"Enter {self.db_manager.uid} to update")
-
         if st.button("Load Info"):
             if not uid:
                 raise ValueError(f"Please enter {self.db_manager.uid} to load resident details and update")
@@ -196,6 +194,7 @@ class ResidenceManagementStreamlit:
 
             updated_data = {
                 "EnrollmentID": st.text_input("Enrollment ID", value=uid, disabled=True),
+                "Code": st.text_input("Enter Code", value=resident_data.get("Code")),
                 "BedID": st.text_input("Select Bed ID", value=resident_data.loc[self.db_manager.bed_id]),
                 "DateofAdmission": st.date_input(
                     "Date of Admission",
@@ -243,8 +242,7 @@ class ResidenceManagementStreamlit:
             updated_data_df = pd.DataFrame([updated_data])
 
             if (updated_data_df["Rent"] < 5000).any() or (updated_data_df["Deposit"] < updated_data_df["Rent"] * 2).any():
-                message = "Warning: Either Rent if less than 5,000 or"
-                "Deposite is less than twice the rent. Are you sure want to continue ?"
+                message = "Warning: Either Rent if less than 5,000 orDeposite is less than twice the rent. Are you sure want to continue ?"
                 st.warning(message, icon="⚠️")
 
             log_comments = st.text_input("Log comments for this Activity")
@@ -656,7 +654,7 @@ class ResidenceManagementStreamlit:
                     df[self.db_manager.confs.date_cols_residents_tbl] = df[self.db_manager.confs.date_cols_residents_tbl].apply(
                         lambda x: x.dt.strftime("%d-%b-%Y"))
                     df[self.db_manager.room_id] = np.where(df[self.db_manager.room_id].isna(), np.nan, df[self.db_manager.room_id].astype(int))
-                    cols_order = [self.db_manager.uid, self.db_manager.bed_id, "Name", "Rent", "Deposit", "DateofAdmission"]
+                    cols_order = ["Code", self.db_manager.uid, self.db_manager.bed_id, "Name", "Rent", "Deposit", "DateofAdmission"]
                     cols_order = cols_order + [col for col in df.columns if col not in cols_order]
                     df = df[cols_order]
 
@@ -671,7 +669,7 @@ class ResidenceManagementStreamlit:
                 case self.db_manager.confs.transactions_tbl:
                     df = self.db_manager.data_manager.load_transactions_table()
                     df = df.merge(
-                        residents_info[["EnrollmentID", "Name"]],
+                        residents_info[["EnrollmentID", "Name", "Code"]],
                         on=self.db_manager.uid,
                         how="left",
                     )
@@ -680,7 +678,7 @@ class ResidenceManagementStreamlit:
                     df[self.db_manager.confs.date_cols_transactions_tbl] = df[self.db_manager.confs.date_cols_transactions_tbl].apply(
                         lambda x: x.dt.strftime("%d-%b-%Y"))
                     df[self.db_manager.confs.float_cols_transactions_tbl] = df[self.db_manager.confs.float_cols_transactions_tbl].round(2)
-                    cols_first = ["TransDate", self.db_manager.uid, self.db_manager.bed_id, "Name",
+                    cols_first = ["TransDate", "Code", self.db_manager.uid, self.db_manager.bed_id, "Name",
                                   "TransType", "TransactionAmount", "RoomElectricityReading",
                                   "PrevDueAmount", "AdditionalCharges", "RentThruDate", "Comments"]
                     all_cols = cols_first + [col for col in df.columns if col not in cols_first]
@@ -696,6 +694,11 @@ class ResidenceManagementStreamlit:
 
                 case self.db_manager.confs.rent_history_tbl:
                     df = self.db_manager.data_manager.load_rent_history()
+                    df = df.merge(
+                        residents_info[["EnrollmentID", "Code"]],
+                        on=self.db_manager.uid,
+                        how="left",
+                    )
                     df[self.db_manager.confs.date_cols_rent_history_tbl] = df[self.db_manager.confs.date_cols_rent_history_tbl].apply(
                         lambda x: x.dt.strftime("%d-%b-%Y")
                     )
@@ -705,7 +708,7 @@ class ResidenceManagementStreamlit:
                     df = df.merge(
                         residents_info[
                             [
-                                "EnrollmentID", "Name", "ContactNumber", "OtherContact", "FathersContact", "MothersContact",
+                                "Code", "EnrollmentID", "Name", "ContactNumber", "OtherContact", "FathersContact", "MothersContact",
                                 "Course", "Rent", "Deposit"
                             ]
                         ],
@@ -721,7 +724,7 @@ class ResidenceManagementStreamlit:
                         np.nan,
                         df[self.db_manager.room_id].astype(int),
                     )
-                    cols_order = [self.db_manager.bed_id, self.db_manager.room_id, self.db_manager.uid,
+                    cols_order = ["Code", self.db_manager.bed_id, self.db_manager.room_id, self.db_manager.uid,
                                   "Name", "Rent", "Deposit", "PrevDueAmount", "AdditionalCharges",
                                   "RoomElectricityReading", "ContactNumber", "OtherContact", "FathersContact"]
                     cols_order = cols_order + [col for col in df.columns if col not in cols_order]
