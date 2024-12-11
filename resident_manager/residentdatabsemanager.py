@@ -280,8 +280,8 @@ class ResidentManager:
         exit_details["NetAmountDue"] = np.nan
         data["TransType"] = "Room Transfer"
 
-        des_resident_info["Rent"] = input_row["SourceResidentNewRent"]
-        des_resident_info["Deposit"] = input_row["SourceResidentNewDeposit"]
+        des_resident_info["Rent"] = input_row["DestinationResidentNewRent"]
+        des_resident_info["Deposit"] = input_row["DestinationResidentNewDeposit"]
 
         self.data_manager.edit_resident_record(
             row=des_resident_info, log_comments="Updating Rent and Deposit of Source UID", copy_db=False
