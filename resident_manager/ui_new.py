@@ -633,6 +633,7 @@ class ResidenceManagementStreamlit:
         if table_name in [self.db_manager.confs.current_status_tbl]:
             st.subheader(f"Empty Bed Count : {len(self.db_manager.data_manager.get_empty_beds())}")
 
+        access_granted = False
         access_code = "##rj_14_hs_3722"
         if table_name in [self.db_manager.confs.rent_history_tbl]:
             pass_ = st.text_input("Enter the password to load table", type="password")
@@ -641,94 +642,98 @@ class ResidenceManagementStreamlit:
                     st.error("Incorrect Password. Access Denied")
                     return
                 else:
+                    access_granted = True
                     st.success("Access Granted")
+        else:
+            access_granted = True
 
         residents_info = self.db_manager.data_manager.load_residents_info_table()
 
-        match table_name:
-            case self.db_manager.confs.residents_tbl:
-                df = self.db_manager.data_manager.load_residents_info_table()
-                df[self.db_manager.confs.date_cols_residents_tbl] = df[self.db_manager.confs.date_cols_residents_tbl].apply(
-                    lambda x: x.dt.strftime("%d-%b-%Y"))
-                df[self.db_manager.room_id] = np.where(df[self.db_manager.room_id].isna(), np.nan, df[self.db_manager.room_id].astype(int))
-                cols_order = [self.db_manager.uid, self.db_manager.bed_id, "Name", "Rent", "Deposit", "DateofAdmission"]
-                cols_order = cols_order + [col for col in df.columns if col not in cols_order]
-                df = df[cols_order]
+        if access_granted:
+            match table_name:
+                case self.db_manager.confs.residents_tbl:
+                    df = self.db_manager.data_manager.load_residents_info_table()
+                    df[self.db_manager.confs.date_cols_residents_tbl] = df[self.db_manager.confs.date_cols_residents_tbl].apply(
+                        lambda x: x.dt.strftime("%d-%b-%Y"))
+                    df[self.db_manager.room_id] = np.where(df[self.db_manager.room_id].isna(), np.nan, df[self.db_manager.room_id].astype(int))
+                    cols_order = [self.db_manager.uid, self.db_manager.bed_id, "Name", "Rent", "Deposit", "DateofAdmission"]
+                    cols_order = cols_order + [col for col in df.columns if col not in cols_order]
+                    df = df[cols_order]
 
-            case self.db_manager.confs.electricity_tbl:
-                df = self.db_manager.data_manager.load_electricity_table()
-                df = df.sort_values(["Date"], ascending=False)
-                df[self.db_manager.confs.date_cols_electricity_tbl] = df[self.db_manager.confs.date_cols_electricity_tbl].apply(
-                    lambda x: x.dt.strftime("%d-%b-%Y %H:%M:%S")
-                )
-                df = df.T
+                case self.db_manager.confs.electricity_tbl:
+                    df = self.db_manager.data_manager.load_electricity_table()
+                    df = df.sort_values(["Date"], ascending=False)
+                    df[self.db_manager.confs.date_cols_electricity_tbl] = df[self.db_manager.confs.date_cols_electricity_tbl].apply(
+                        lambda x: x.dt.strftime("%d-%b-%Y %H:%M:%S")
+                    )
+                    df = df.T
 
-            case self.db_manager.confs.transactions_tbl:
-                df = self.db_manager.data_manager.load_transactions_table()
-                df = df.merge(
-                    residents_info[["EnrollmentID", "Name"]],
-                    on=self.db_manager.uid,
-                    how="left",
-                )
-                df = df.sort_values(["TransDate"], ascending=False)
+                case self.db_manager.confs.transactions_tbl:
+                    df = self.db_manager.data_manager.load_transactions_table()
+                    df = df.merge(
+                        residents_info[["EnrollmentID", "Name"]],
+                        on=self.db_manager.uid,
+                        how="left",
+                    )
+                    df = df.sort_values(["TransDate"], ascending=False)
 
-                df[self.db_manager.confs.date_cols_transactions_tbl] = df[self.db_manager.confs.date_cols_transactions_tbl].apply(
-                    lambda x: x.dt.strftime("%d-%b-%Y")
-                )
-                cols_first = ["TransDate", self.db_manager.uid, self.db_manager.bed_id, "Name",
-                              "TransType", "TransactionAmount", "RoomElectricityReading",
-                              "PrevDueAmount", "AdditionalCharges", "RentThruDate", "Comments"
-                              ]
-                all_cols = cols_first + [col for col in df.columns if col not in cols_first]
-                df = df[all_cols]
+                    df[self.db_manager.confs.date_cols_transactions_tbl] = df[self.db_manager.confs.date_cols_transactions_tbl].apply(
+                        lambda x: x.dt.strftime("%d-%b-%Y"))
+                    df[self.db_manager.confs.float_cols_transactions_tbl] = df[self.db_manager.confs.float_cols_transactions_tbl].round(2)
+                    cols_first = ["TransDate", self.db_manager.uid, self.db_manager.bed_id, "Name",
+                                  "TransType", "TransactionAmount", "RoomElectricityReading",
+                                  "PrevDueAmount", "AdditionalCharges", "RentThruDate", "Comments"]
+                    all_cols = cols_first + [col for col in df.columns if col not in cols_first]
+                    df = df[all_cols]
 
-            case self.db_manager.confs.final_settlement_tbl:
-                df = self.db_manager.data_manager.load_final_settlement_table()
-                df = df.sort_values(["ExitDate"], ascending=False)
-                df[self.db_manager.confs.date_cols_final_settlement_tbl] = df[self.db_manager.confs.date_cols_final_settlement_tbl].apply(
-                    lambda x: x.dt.strftime("%d-%b-%Y")
-                )
+                case self.db_manager.confs.final_settlement_tbl:
+                    df = self.db_manager.data_manager.load_final_settlement_table()
+                    df = df.sort_values(["ExitDate"], ascending=False)
+                    df[self.db_manager.confs.date_cols_final_settlement_tbl] = df[self.db_manager.confs.date_cols_final_settlement_tbl].apply(
+                        lambda x: x.dt.strftime("%d-%b-%Y")
+                    )
+                    df[self.db_manager.confs.float_cols_final_settlement_tbl] = df[self.db_manager.confs.float_cols_final_settlement_tbl].round(2)
 
-            case self.db_manager.confs.rent_history_tbl:
-                df = self.db_manager.data_manager.load_rent_history()
-                df[self.db_manager.confs.date_cols_rent_history_tbl] = df[self.db_manager.confs.date_cols_rent_history_tbl].apply(
-                    lambda x: x.dt.strftime("%d-%b-%Y")
-                )
+                case self.db_manager.confs.rent_history_tbl:
+                    df = self.db_manager.data_manager.load_rent_history()
+                    df[self.db_manager.confs.date_cols_rent_history_tbl] = df[self.db_manager.confs.date_cols_rent_history_tbl].apply(
+                        lambda x: x.dt.strftime("%d-%b-%Y")
+                    )
 
-            case self.db_manager.confs.current_status_tbl:
-                df = self.db_manager.data_manager.load_current_status()
-                df = df.merge(
-                    residents_info[
-                        [
-                            "EnrollmentID", "Name", "ContactNumber", "OtherContact", "FathersContact", "MothersContact",
-                            "Course", "Rent", "Deposit"
-                        ]
-                    ],
-                    on=self.db_manager.uid,
-                    how="left",
-                )
+                case self.db_manager.confs.current_status_tbl:
+                    df = self.db_manager.data_manager.load_current_status()
+                    df = df.merge(
+                        residents_info[
+                            [
+                                "EnrollmentID", "Name", "ContactNumber", "OtherContact", "FathersContact", "MothersContact",
+                                "Course", "Rent", "Deposit"
+                            ]
+                        ],
+                        on=self.db_manager.uid,
+                        how="left",
+                    )
+                    df[self.db_manager.confs.float_cols_status_tbl] = df[self.db_manager.confs.float_cols_status_tbl].round(2)
+                    df[self.db_manager.confs.date_cols_status_tbl] = df[self.db_manager.confs.date_cols_status_tbl].apply(
+                        lambda x: x.dt.strftime("%d-%b-%Y")
+                    )
+                    df[self.db_manager.room_id] = np.where(
+                        df[self.db_manager.room_id].isna(),
+                        np.nan,
+                        df[self.db_manager.room_id].astype(int),
+                    )
+                    cols_order = [self.db_manager.bed_id, self.db_manager.room_id, self.db_manager.uid,
+                                  "Name", "Rent", "Deposit", "PrevDueAmount", "AdditionalCharges",
+                                  "RoomElectricityReading", "ContactNumber", "OtherContact", "FathersContact"]
+                    cols_order = cols_order + [col for col in df.columns if col not in cols_order]
+                    df = df[cols_order]
 
-                df[self.db_manager.confs.date_cols_status_tbl] = df[self.db_manager.confs.date_cols_status_tbl].apply(
-                    lambda x: x.dt.strftime("%d-%b-%Y")
-                )
-                df[self.db_manager.room_id] = np.where(
-                    df[self.db_manager.room_id].isna(),
-                    np.nan,
-                    df[self.db_manager.room_id].astype(int),
-                )
-                cols_order = [self.db_manager.bed_id, self.db_manager.room_id, self.db_manager.uid,
-                              "Name", "Rent", "Deposit", "PrevDueAmount", "AdditionalCharges",
-                              "RoomElectricityReading", "ContactNumber", "OtherContact", "FathersContact"]
-                cols_order = cols_order + [col for col in df.columns if col not in cols_order]
-                df = df[cols_order]
+                case self.db_manager.confs.logs_tbl:
+                    df = self.db_manager.data_manager.load_logs()
+                    # df = df.sort_values(["Date"], ascending=False)
+                    df["Date"] = df["Date"].dt.strftime("%d-%b-%Y %H:%M:%S")
 
-            case self.db_manager.confs.logs_tbl:
-                df = self.db_manager.data_manager.load_logs()
-                # df = df.sort_values(["Date"], ascending=False)
-                df["Date"] = df["Date"].dt.strftime("%d-%b-%Y %H:%M:%S")
-
-        if (df is not None) and (not df.empty):
-            st.dataframe(df, height=1100, use_container_width=True)
+            if (df is not None) and (not df.empty):
+                st.dataframe(df, height=1100, use_container_width=True)
 
     def apply_custom_css(self):
         st.markdown(

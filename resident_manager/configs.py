@@ -114,6 +114,24 @@ float_cols_transactions_tbl = [
     "NewDeposit",
 ]
 
+float_cols_final_settlement_tbl = [
+    "Rent",
+    "RentDue",
+    "PrevRoomElectricityReading",
+    "ExitElectricityReading",
+    "RoomElectricityConsumption",
+    "CumulativeElectConsumption",
+    "ElectricityCharges",
+    "PrevDueAmount",
+    "AdditionalCharges",
+    "TotalAmountDue",
+    "Deposit",
+    "NetAmountDue"
+
+
+
+]
+
 
 uid_col = "EnrollmentID"
 room_col = "RoomNo"
