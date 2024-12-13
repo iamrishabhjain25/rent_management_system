@@ -10,7 +10,7 @@ import pandas as pd
 import residentdatabsemanager as RDM
 import streamlit as st
 from utils import DatabaseHandler, DataManager
-
+from credentials import passkey
 
 st.set_page_config(layout="wide")
 
@@ -632,7 +632,7 @@ class ResidenceManagementStreamlit:
             st.subheader(f"Empty Bed Count : {len(self.db_manager.data_manager.get_empty_beds())}")
 
         access_granted = False
-        access_code = "##rj_14_hs_3722"
+        access_code = passkey
         if table_name in [self.db_manager.confs.rent_history_tbl]:
             pass_ = st.text_input("Enter the password to load table", type="password")
             if pass_:
