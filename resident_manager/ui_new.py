@@ -631,7 +631,7 @@ class ResidenceManagementStreamlit:
             st.subheader(f"Empty Bed Count : {len(self.db_manager.data_manager.get_empty_beds())}")
 
         access_granted = False
-        access_code = os.getenv("view_table_password")
+        access_code = os.getenv("PASSWORD_TO_VIEW_TABLE")
         if table_name in [self.db_manager.confs.rent_history_tbl]:
             pass_ = st.text_input("Enter the password to load table", type="password")
             if pass_:
