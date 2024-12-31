@@ -938,7 +938,6 @@ def main():
     file = open(configs.credentials_path, "r")
     credentials = json.load(file)
 
-
     authenticator = stauth.Authenticate(
         credentials['credentials'],
         credentials['cookie']['name'],
@@ -1047,6 +1046,7 @@ def main():
         st.error("Username or password is incorrect.")
     elif authentication_status is None:
         st.warning("Please enter your username and password.")
+
 
 if __name__ == "__main__":
     main()
