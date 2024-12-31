@@ -8,6 +8,8 @@ db_filename: str = "ResidentsDatabase"
 db_extension: str = ".db"
 fl_name_dt_frmt: str = "%Y-%m-%d_%H-%M-%S"
 
+credentials_path = pathlib.Path(os.getcwd()).resolve().parent.parent / "credentials" / "credentials.json"
+
 
 # UID format: YYYY001
 uid_length = 7

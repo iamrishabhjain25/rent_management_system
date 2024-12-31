@@ -10,6 +10,8 @@ import pandas as pd
 import residentdatabsemanager as RDM
 import streamlit as st
 from utils import DatabaseHandler, DataManager
+import streamlit_authenticator as stauth
+import json
 
 st.set_page_config(layout="wide")
 
@@ -932,97 +934,119 @@ class ResidenceManagementStreamlit:
 
 # Main Streamlit UI
 def main():
-    st.title("Residence Management System")
 
-    db_handler = DatabaseHandler(confs=configs)
-    data_manager = DataManager(confs=configs, db_handler=db_handler)
-    db_manager = RDM.ResidentManager(confs=configs, db_handler=db_handler, data_manager=data_manager)  # Replace this with your actual db manager
-    system = ResidenceManagementStreamlit(db_manager)
+    file = open(configs.credentials_path, "r")
+    credentials = json.load(file)
 
-    # Sidebar for navigation
-    menu = [
-        "Record Payment",
-        "New Admission",
-        "New Electricity Reading",
-        "Update Resident Info",
-        "Update Electricity Record",
-        "Entry/Exit of Form",
-        "Room Transfer",
-        "Calculate Rent",
-        "Record Additional Charges",
-        "Electricity Meter Change",
-        "Save a Copy",
-        "Undo Last change",
-        "View Current Tables",
-    ]
-    choice = st.sidebar.radio("Choose an Option", menu)
 
-    st.write(f"Curretn Databse in Use -> {db_handler.get_latest_db_path(full_path=False)}")
+    authenticator = stauth.Authenticate(
+        credentials['credentials'],
+        credentials['cookie']['name'],
+        credentials['cookie']['key'],
+        credentials['cookie']['expiry_days'],
+        auto_hash=False
 
-    if choice == "New Admission":
-        system.new_admission()
-    elif choice == "Save a Copy":
-        system.create_copy()
-    elif choice == "New Electricity Reading":
-        system.new_electricity_record()
-    elif choice == "Update Resident Info":
-        system.update_resident_info()
-    elif choice == "Update Electricity Record":
-        system.update_electricity_record()
-    elif choice == "Record Payment":
-        system.record_payment()
-    elif choice == "Entry/Exit of Form":
-        system.record_activity()
-    elif choice == "Room Transfer":
-        system.room_transfer()
-    elif choice == "Calculate Rent":
-        system.calculate_monthly_rent()
-    elif choice == "Record Additional Charges":
-        system.record_additional_charges()
-    elif choice == "View Current Tables":
-        system.view_current_tables()
+    )
 
-    elif choice == "Electricity Meter Change":
-        system.change_electricity_meter()
+    name, authentication_status, username = authenticator.login("sidebar")
+    if authentication_status:
+        authenticator.logout(button_name='Logout', location='sidebar')
+        st.sidebar.write(f"Welcome, {name}")
+        st.title("Residence Management System")
 
-    if choice == "Undo Last change":
-        st.subheader("Undo Recent Changes")
-        st.write("This will revert the database to the last backup available.")
+        db_handler = DatabaseHandler(confs=configs)
+        data_manager = DataManager(confs=configs, db_handler=db_handler)
+        db_manager = RDM.ResidentManager(confs=configs, db_handler=db_handler, data_manager=data_manager)  # Replace this with your actual db manager
+        system = ResidenceManagementStreamlit(db_manager)
 
-        files_list = os.listdir(str(db_manager.db_handler.db_path))
-        db_list = [
-            file.strip(db_manager.db_handler.db_extension)
-            for file in files_list
-            if (file.endswith(db_manager.db_handler.db_extension) and file.startswith(db_manager.db_handler.db_filename))
+        # Sidebar for navigation
+        menu = [
+            "Record Payment",
+            "New Admission",
+            "New Electricity Reading",
+            "Update Resident Info",
+            "Update Electricity Record",
+            "Entry/Exit of Form",
+            "Room Transfer",
+            "Calculate Rent",
+            "Record Additional Charges",
+            "Electricity Meter Change",
+            "Save a Copy",
+            "Undo Last change",
+            "View Current Tables",
         ]
+        choice = st.sidebar.radio("Choose an Option", menu)
 
-        st.write(db_list)
-        if "undo_warning_displayed" not in st.session_state:
-            st.session_state.undo_warning_displayed = False
+        st.write(f"Curretn Databse in Use -> {db_handler.get_latest_db_path(full_path=False)}")
 
-        if st.button("Undo Recent Changes"):
-            st.session_state.undo_warning_displayed = True
+        if choice == "New Admission":
+            system.new_admission()
+        elif choice == "Save a Copy":
+            system.create_copy()
+        elif choice == "New Electricity Reading":
+            system.new_electricity_record()
+        elif choice == "Update Resident Info":
+            system.update_resident_info()
+        elif choice == "Update Electricity Record":
+            system.update_electricity_record()
+        elif choice == "Record Payment":
+            system.record_payment()
+        elif choice == "Entry/Exit of Form":
+            system.record_activity()
+        elif choice == "Room Transfer":
+            system.room_transfer()
+        elif choice == "Calculate Rent":
+            system.calculate_monthly_rent()
+        elif choice == "Record Additional Charges":
+            system.record_additional_charges()
+        elif choice == "View Current Tables":
+            system.view_current_tables()
 
-        if st.session_state.undo_warning_displayed:
-            st.warning("Are you sure you want to undo recent changes? This action cannot be undone.")
-            col1, col2 = st.columns(2)
+        elif choice == "Electricity Meter Change":
+            system.change_electricity_meter()
 
-            with col1:
-                if st.button("Confirm Undo"):
-                    try:
-                        if db_handler.connection:
-                            db_handler.close()
-                        # Revert database to last backup
-                        db_manager.data_manager.revert_to_last_backup()
-                        st.success("Reverted to the last available backup successfully.")
+        if choice == "Undo Last change":
+            st.subheader("Undo Recent Changes")
+            st.write("This will revert the database to the last backup available.")
+
+            files_list = os.listdir(str(db_manager.db_handler.db_path))
+            db_list = [
+                file.strip(db_manager.db_handler.db_extension)
+                for file in files_list
+                if (file.endswith(db_manager.db_handler.db_extension) and file.startswith(db_manager.db_handler.db_filename))
+            ]
+
+            st.write(db_list)
+            if "undo_warning_displayed" not in st.session_state:
+                st.session_state.undo_warning_displayed = False
+
+            if st.button("Undo Recent Changes"):
+                st.session_state.undo_warning_displayed = True
+
+            if st.session_state.undo_warning_displayed:
+                st.warning("Are you sure you want to undo recent changes? This action cannot be undone.")
+                col1, col2 = st.columns(2)
+
+                with col1:
+                    if st.button("Confirm Undo"):
+                        try:
+                            if db_handler.connection:
+                                db_handler.close()
+                            # Revert database to last backup
+                            db_manager.data_manager.revert_to_last_backup()
+                            st.success("Reverted to the last available backup successfully.")
+                            st.session_state.undo_warning_displayed = False
+                        except Exception as e:
+                            st.error(f"Failed to undo changes: {e}")
+
+                with col2:
+                    if st.button("Cancel"):
                         st.session_state.undo_warning_displayed = False
-                    except Exception as e:
-                        st.error(f"Failed to undo changes: {e}")
 
-            with col2:
-                if st.button("Cancel"):
-                    st.session_state.undo_warning_displayed = False
-
+    elif authentication_status is False:
+        st.error("Username or password is incorrect.")
+    elif authentication_status is None:
+        st.warning("Please enter your username and password.")
 
 if __name__ == "__main__":
     main()
