@@ -590,7 +590,7 @@ class DataManager:
         if not_float:
             raise ValueError(f"Data type of the columns: ({not_float}) is not float")
 
-        check_nan_cols = set(float_cols) - set(allow_nan_cols)
+        check_nan_cols = list(set(float_cols) - set(allow_nan_cols))
         if check_nan_cols:
             if any(data[check_nan_cols].isna().any(axis=0)):
                 raise ValueError(f"Nan in the input_df for float cols:{check_nan_cols}")
