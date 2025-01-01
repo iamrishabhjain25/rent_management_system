@@ -100,12 +100,13 @@ class ResidentManager:
         )
         row_with_calc = row_with_calc.merge(resident_info, on=self.uid, how="left")
 
-        row_with_calc["RentThruDate"] = row["RentThruDate"]
+        row_with_calc["RentThruDate"] = pd.to_datetime(row["RentThruDate"])
         row_with_calc["PrevDueAmount"] = prev_dues
         row_with_calc["AdditionalCharges"] = prev_charges
         row_with_calc["Comments"] = row["Comments"]
 
-        row_with_calc["RentDays"] = (row_with_calc["RentThruDate"].dt.date - row_with_calc["LastRentCalcDate"].dt.date).dt.days
+
+        row_with_calc["RentDays"] = (row_with_calc["RentThruDate"].dt.normalize() - row_with_calc["LastRentCalcDate"].dt.normalize()).dt.days
         row_with_calc["RentDue"] = row_with_calc["RentDays"] * row_with_calc["Rent"] / monthly_factor
         row_with_calc["ElectricityCharges"] = row_with_calc["CumulativeElectConsumption"] * self.confs.elect_rate
 

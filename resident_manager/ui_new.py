@@ -425,7 +425,7 @@ class ResidenceManagementStreamlit:
             "cannot be less than last electricity reading ({last_elect_reading})"
 
         data = {
-            "TransDate": trans_dt_time.strftime("%d-%b-%Y %H:%M:%S"),
+            "TransDate": trans_dt_time,
             f"{self.db_manager.bed_id}": bed_id,
             f"{self.db_manager.uid}": uid,
             "RoomElectricityReading": trans_elect,
@@ -467,6 +467,7 @@ class ResidenceManagementStreamlit:
                 "Comments",
             ]
         ]
+        display_df["TransDate"] = display_df["TransDate"].dt.strftime("%d-%b-%Y %H:%M:%S")
         st.dataframe(display_df)
 
         if error:
