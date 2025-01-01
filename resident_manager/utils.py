@@ -553,7 +553,7 @@ class DataManager:
         if any((data[str_cols] == "").any(axis=0)):
             raise ValueError(f"Empty string '' found in id_col: {str_cols} in input_df")
 
-        check_nan_cols = set(str_cols) - set(allow_nan_cols)
+        check_nan_cols = list(set(str_cols) - set(allow_nan_cols))
         if check_nan_cols:
             if any(data[check_nan_cols].isna().any(axis=0)):
                 raise ValueError(f"Nan in the input_df id cols:{check_nan_cols}")
@@ -758,9 +758,13 @@ class DataManager:
 
         return row
 
-    def validate_payment_transaction(self, row: pd.Series):
+    def validate_payment_transaction(self, row: pd.Series, trans_type: str):
         row = row.copy()
         curr_status = self.load_current_status()
+        prev_history = self.load_transactions_table()
+        prev_history = prev_history[[self.uid, self.bed_id, "TransDate", "TransType", "TransactionAmount"]]
+        prev_history = prev_history[prev_history["TransType"] == trans_type]
+
         mandatory_cols = [self.uid, self.bed_id, "TransDate", "TransType", "TransactionAmount", "Comments"]
         self.validate_columns_or_index(data=row, mandatory_cols=mandatory_cols, if_missing="raise")
 
@@ -775,6 +779,17 @@ class DataManager:
 
         if row[f"{self.uid}"] not in curr_status[self.uid].values:
             raise ValueError("cannot accept a payment/charges for a resident who is not staying")
+
+        already_exists = (
+            (prev_history["TransDate"] == row["TransDate"]) &
+            (prev_history["TransactionAmount"] == row["TransactionAmount"]) &
+            (prev_history[self.uid] == row[self.uid]) &
+            (prev_history[self.bed_id] == row[self.bed_id])
+        ).any()
+
+        if already_exists:
+            raise ValueError("Payment / Charges already recorded and exists in the database")
+
         return row
 
     def validate_transaction(self, row: pd.Series):
@@ -791,7 +806,7 @@ class DataManager:
             valid_row = self.validate_exit_transaction(row=row)
 
         if trans_type in ["payment", "charges"]:
-            valid_row = self.validate_payment_transaction(row=row)
+            valid_row = self.validate_payment_transaction(row=row, trans_type=trans_type)
 
         return valid_row
 

@@ -192,10 +192,9 @@ class ResidenceManagementStreamlit:
 
         if st.session_state.resident_data is not None:
             resident_data = st.session_state.resident_data
-
             updated_data = {
                 "EnrollmentID": st.text_input("Enrollment ID", value=uid, disabled=True),
-                "Code": st.text_input("Enter Code", value=resident_data.get("Code")),
+                "Code": st.text_input("Enter Code: Code can only be A or R", value=resident_data.get("Code")),
                 "BedID": st.text_input("Select Bed ID", value=resident_data.loc[self.db_manager.bed_id]),
                 "DateofAdmission": st.date_input(
                     "Date of Admission",
@@ -733,8 +732,16 @@ class ResidenceManagementStreamlit:
 
                 case self.db_manager.confs.logs_tbl:
                     df = self.db_manager.data_manager.load_logs()
-                    # df = df.sort_values(["Date"], ascending=False)
+                    df = df.sort_values(["Date"], ascending=False)
                     df["Date"] = df["Date"].dt.strftime("%d-%b-%Y %H:%M:%S")
+                    df = df.merge(
+                        residents_info[["EnrollmentID", "Name"]],
+                        on=self.db_manager.uid,
+                        how="left",
+                    )
+                    cols_order = ["Date", "BedID", "RoomNo", "EnrollmentID", "Name", "Type", "DB_Before", "DB_After", "Error", "Comments"]
+                    df = df[cols_order]
+
 
             if (df is not None) and (not df.empty):
                 st.dataframe(df, height=1100, use_container_width=True)
@@ -869,7 +876,7 @@ class ResidenceManagementStreamlit:
                     st.success("Payment processed Successfully")
                 except Exception as e:
                     st.error(f"Error Updating electricity record {e}")
-                    st.code(traceback.format_exc())
+                    # st.code(traceback.format_exc())
 
     def record_additional_charges(self):
         st.subheader("Record Additional charges")
