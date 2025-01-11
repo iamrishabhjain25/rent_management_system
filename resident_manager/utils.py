@@ -768,6 +768,11 @@ class DataManager:
         mandatory_cols = [self.uid, self.bed_id, "TransDate", "TransType", "TransactionAmount", "Comments"]
         self.validate_columns_or_index(data=row, mandatory_cols=mandatory_cols, if_missing="raise")
 
+        date_cols = ["TransDate"]
+        float_cols = ["TransactionAmount"]
+        str_cols = [self.uid, self.bed_id, "TransType", "Comments"]
+        row = self.convert_data_types(data=row, date_cols=date_cols, float_cols=float_cols, str_cols=str_cols)  # type: ignore
+
         if self.room_id not in row.index:
             row[f"{self.room_id}"] = pd.Series(row[self.bed_id]).str.replace(r"\D", "", regex=True).iloc[0]
 
