@@ -411,7 +411,7 @@ class ResidentManager:
         occupied_beds["RentDays"] = np.where(
             occupied_beds["LastRentCalcDate"] == prev_eom_rent_calc_date,
             monthly_factor,
-            (eom_rent_calc_date.date() - occupied_beds["LastRentCalcDate"].dt.date).dt.days,
+            (eom_rent_calc_date.normalize() - occupied_beds["LastRentCalcDate"].dt.normalize()).dt.days,
         )
 
         occupied_beds["RentDue"] = occupied_beds["RentDays"] * occupied_beds["Rent"] / monthly_factor
