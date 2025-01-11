@@ -331,7 +331,7 @@ class ResidenceManagementStreamlit:
 
             updated_data_df = pd.DataFrame([updated_data])
 
-            invalid_reading = updated_data.squeeze() < latest_before_dt
+            invalid_reading = updated_data_df.squeeze() < latest_before_dt
             if invalid_reading.any():
                 st.warning(
                     f"Invalid Electricity Reading : Reading for ({invalid_reading[invalid_reading==1].index.tolist()})"
