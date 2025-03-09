@@ -313,13 +313,13 @@ class ResidenceManagementStreamlit:
                 latest_before_dt["Date"] = np.nan
 
             updated_data = {"Date": new_reading_datetime}
-            input_Cols = st.columns(len(meter_groups))
+            input_Cols = st.columns(len(meter_groups.keys()))
 
-            for i, col in enumerate(input_Cols):
-                with col:
-                    st.subheader(f"Floor {i}")
-                    for meter in meter_groups[i]:
-                        updated_data[meter] =  st.number_input(f"Enter {meter} Meter Reading", value=prev_record.get(meter))
+            for i, key in enumerate(meter_groups):
+                with input_Cols[i]:
+                    st.subheader(key)
+                    for meter in meter_groups[key]:
+                        updated_data[meter] = st.number_input(f"Enter {meter} Meter Reading", value=prev_record.get(meter))
 
             updated_data_df = pd.DataFrame([updated_data])
 
@@ -333,7 +333,6 @@ class ResidenceManagementStreamlit:
 
             log_comments = st.text_input("Log comments for this Activity")
 
-            st.info(updated_data_df.columns)
 
             if not error:
                 if st.button("Update"):
@@ -823,6 +822,11 @@ class ResidenceManagementStreamlit:
             except Exception as e:
                 st.error(f"Error Updating electricity record {e}")
                 st.code(traceback.format_exc())
+
+    def record_multiple_payments(self):
+
+        return
+
 
     def record_payment(self):
         st.subheader("Record Payment")
