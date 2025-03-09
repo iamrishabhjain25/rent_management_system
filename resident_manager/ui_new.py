@@ -257,81 +257,73 @@ class ResidenceManagementStreamlit:
                     st.code(traceback.format_exc())
 
     def update_electricity_record(self):
+
         st.header("Change/Update Electricity Info")
         if "prev_record" not in st.session_state:
             st.session_state.prev_record = None
 
         elect_records = self.db_manager.data_manager.load_electricity_table().sort_values(["Date"])
+        st.session_state.elect_records = elect_records
         date_map = {}
         for a_dt in elect_records["Date"].unique():
             str_dt = pd.to_datetime(a_dt).strftime("%d-%b-%Y %H:%M:%S")
             date_map[str_dt] = a_dt
 
         update_dt = st.selectbox("Choose the date to update", options=list(date_map.keys()))
+        st.session_state.update_dt = update_dt
+
         if st.button("Load Info"):
             if not update_dt:
                 raise st.warning("Please enter date to load details and update")
 
             prev_record = elect_records[elect_records["Date"] == date_map[update_dt]].squeeze()
-            latest_before_dt = elect_records[elect_records["Date"] < update_dt].tail(1).squeeze()
 
-            if latest_before_dt.empty:
-                latest_before_dt = pd.Series(0, index=elect_records.columns)
-                latest_before_dt["Date"] = np.nan
-
-            # st.session_state.latest_before_dt = latest_before_dt
             if prev_record.empty:
                 st.warning("No record found")
             else:
                 st.session_state.prev_record = prev_record.squeeze()
 
+        st.markdown("---")
+
         if st.session_state.prev_record is not None:
             prev_record = st.session_state.prev_record
+            update_dt = st.session_state.update_dt
+            elect_records = st.session_state.elect_records
 
-            updated_data = {"Date": update_dt}
-            rooms = pd.Series(self.db_manager.confs.valid_bedIDs).str.replace(r"\D", "", regex=True).unique().tolist()
+            error = ""
+            meter_groups = self.db_manager.confs.meter_groups
 
-            for a_room in rooms:
-                updated_data[a_room] = st.number_input(f"Enter Room {a_room} Meter Reading", value=prev_record.get(a_room))
+            # choosing the new date to be old date by default
+            new_reading_datetime = update_dt
+            new_reading_date = st.date_input("New Electricity Reading Date", value=None, format="DD-MM-YYYY")
+            new_reading_time = st.time_input("New Electricity Reading Time", value=None)
 
-            updated_data.update(
-                {
-                    "Meter_1_2A": st.number_input(
-                        "Enter Main Meter 1 Reading",
-                        value=prev_record.get("Meter_1_2A"),
-                    ),
-                    "Meter_2_2B": st.number_input(
-                        "Enter Main Meter 2 Reading",
-                        value=prev_record.get("Meter_2_2B"),
-                    ),
-                    "Meter_3_1A": st.number_input(
-                        "Enter Main Meter 3 Reading",
-                        value=prev_record.get("Meter_3_1A"),
-                    ),
-                    "Meter_4_1B": st.number_input(
-                        "Enter Main Meter 4 Reading",
-                        value=prev_record.get("Meter_4_1B"),
-                    ),
-                    "Meter_5_GA": st.number_input(
-                        "Enter Main Meter 5 Reading",
-                        value=prev_record.get("Meter_5_GA"),
-                    ),
-                    "Meter_6_GB": st.number_input(
-                        "Enter Main Meter 6 Reading",
-                        value=prev_record.get("Meter_6_GB"),
-                    ),
-                    "Meter_7_Basement": st.number_input(
-                        "Enter Main Meter 7 Reading",
-                        value=prev_record.get("Meter_7_Basement"),
-                    ),
-                    "Library": st.number_input("Enter Library Meter Reading", value=prev_record.get("Library")),
-                    "Solar": st.number_input("Enter Solar Meter Reading", value=prev_record.get("Solar")),
-                }
-            )
+            if (new_reading_date is None) or (new_reading_time is None):
+                error +=  "Please select New Date and time to be updated"
+                st.warning("Please select New Date and time to be updated")
+
+            if new_reading_date and new_reading_time:
+                new_reading_datetime = datetime.combine(new_reading_date, new_reading_time)
+
+            latest_before_dt = elect_records[(elect_records["Date"] != update_dt) & (elect_records["Date"] < new_reading_datetime)].tail(1)
+            latest_before_dt = latest_before_dt.reset_index(drop=True)
+
+            if latest_before_dt.empty:
+                latest_before_dt = pd.DataFrame(0, columns=elect_records.columns)
+                latest_before_dt["Date"] = np.nan
+
+            updated_data = {"Date": new_reading_datetime}
+            input_Cols = st.columns(len(meter_groups))
+
+            for i, col in enumerate(input_Cols):
+                with col:
+                    st.subheader(f"Floor {i}")
+                    for meter in meter_groups[i]:
+                        updated_data[meter] =  st.number_input(f"Enter {meter} Meter Reading", value=prev_record.get(meter))
 
             updated_data_df = pd.DataFrame([updated_data])
 
-            invalid_reading = updated_data_df.squeeze() < latest_before_dt
+            invalid_reading = (updated_data_df < latest_before_dt).squeeze()
             if invalid_reading.any():
                 st.warning(
                     f"Invalid Electricity Reading : Reading for ({invalid_reading[invalid_reading==1].index.tolist()})"
@@ -340,15 +332,19 @@ class ResidenceManagementStreamlit:
                 return
 
             log_comments = st.text_input("Log comments for this Activity")
-            if st.button("Update"):
-                try:
-                    with st.spinner("Processing Admission, please wait"):
-                        self.db_manager.data_manager.edit_electricity_record(input_df=updated_data_df, log_comments=log_comments)
-                    st.success("Electricity Record updated successfully.")
-                    st.session_state.prev_record = None
-                except Exception as e:
-                    st.error(f"Error Updating electricity record {e}")
-                    st.code(traceback.format_exc())
+
+            st.info(updated_data_df.columns)
+
+            if not error:
+                if st.button("Update"):
+                    try:
+                        with st.spinner("Processing Admission, please wait"):
+                            self.db_manager.data_manager.edit_electricity_record(input_df=updated_data_df, update_date=update_dt, log_comments=log_comments)
+                        st.success("Electricity Record updated successfully.")
+                        st.session_state.prev_record = None
+                    except Exception as e:
+                        st.error(f"Error Updating electricity record {e}")
+                        st.code(traceback.format_exc())
 
     def record_activity(self):
         st.header("Resident Exit and entry")

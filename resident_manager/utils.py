@@ -376,6 +376,7 @@ class DataManager:
     @log_and_backup()
     def insert_electricity_record(self, input_df: pd.DataFrame, log_comments: Optional[str] = None):
         valid_input = self.prepare_and_validate_elect_input(input_df, check_if_exists_in_old=self.confs.date_cols_electricity_tbl)
+        valid_input.columns = valid_input.columns.map(lambda col: f"Room_{col}" if col.isdigit() else col)
         self.db_handler.insert_records(self.confs.electricity_tbl, valid_input, if_exists="append")
         return
 
@@ -394,13 +395,13 @@ class DataManager:
         return self.db_handler.insert_records(self.confs.current_status_tbl, valid_status, if_exists="replace")
 
     @log_and_backup()
-    def edit_electricity_record(self, input_df, log_comments: Optional[str] = None):
+    def edit_electricity_record(self, input_df: pd.DataFrame, update_date: dt.datetime, log_comments: Optional[str] = None):
         all_records = self.load_electricity_table()
         new_record = self.prepare_and_validate_elect_input(input_df, check_if_exists_in_old=None)
+        update_date = pd.to_datetime(update_date)
 
-        for col in all_records.columns:
-            if col not in ["Date"]:
-                all_records.loc[all_records["Date"].isin(new_record["Date"]), col] = new_record[col].iloc[0].squeeze()
+        all_records = all_records[all_records["Date"] != update_date]
+        all_records = pd.concat([all_records, new_record])
 
         self.db_handler.insert_records(self.confs.electricity_tbl, all_records, if_exists="replace")
         return True
@@ -702,6 +703,7 @@ class DataManager:
         check_if_exists_in_old: Optional[str | Sequence[str]] = None,
     ) -> pd.DataFrame:
 
+        data.columns = data.columns.astype(str)
         data.columns = data.columns.str.replace("Room_", "")
         date_cols = self.confs.date_cols_electricity_tbl
         float_cols = self.confs.float_cols_electricity_tbl
@@ -718,8 +720,6 @@ class DataManager:
 
         old_data = self.load_electricity_table()
         valid_data = self.validate_df_new_with_old(old_df=old_data, new_df=data, check_if_exists_in_old=check_if_exists_in_old)
-
-        valid_data.columns = valid_data.columns.map(lambda col: f"Room_{col}" if col.isdigit() else col)
 
         return valid_data
 
