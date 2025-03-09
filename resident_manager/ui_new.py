@@ -824,6 +824,68 @@ class ResidenceManagementStreamlit:
                 st.code(traceback.format_exc())
 
     def record_multiple_payments(self):
+        st.subheader("Record Multiple Payments")
+        error = ""
+
+        curr_status = self.db_manager.data_manager.load_current_status()
+        resident_info = self.db_manager.data_manager.load_residents_info_table()
+        curr_status = curr_status.merge(resident_info[[self.db_manager.uid, "Name"]], on=self.db_manager.uid, how="left")
+        curr_status["options"] = curr_status[self.db_manager.bed_id] + " - " + curr_status["Name"]
+        resident_options = curr_status[curr_status["options"].notna()]["options"].values
+        resident_uids = curr_status[curr_status["options"].notna()][self.db_manager.uid].values
+        resident_bedid = curr_status[curr_status["options"].notna()][self.db_manager.bed_id].values
+        resident_room_id = curr_status[curr_status["options"].notna()][self.db_manager.room_id].values
+
+
+        # Creating a DataFrame for payments
+        data = pd.DataFrame({
+            "Residents": resident_options,
+            f"{self.db_manager.uid}": resident_uids,
+            "TransDate": [None] * len(resident_options),
+            "TransactionAmount": [0] * len(resident_options),
+            "Comments": [""] * len(resident_options)
+        })
+
+        st.write("### Record Payments")
+
+        # Using st.data_editor with controlled editability
+        edited_df = st.data_editor(
+            data,
+            column_config={
+                "TransDate": st.column_config.DateColumn("Payment Date", format="DDMMMYYYY"),
+                "TransactionAmount": st.column_config.NumberColumn("Amount", min_value=0, default=None),
+                "Comments": st.column_config.TextColumn("Comments")
+            },
+            disabled=["Residents", f"{self.db_manager.uid}"],
+            hide_index=True,
+            height=3500,
+            width=1000
+        )
+
+        edited_df[self.db_manager.bed_id] = resident_bedid
+        edited_df[self.db_manager.room_id] = resident_room_id
+        edited_df["TransType"] = "payment"
+        edited_df = edited_df.drop(['Residents'], axis=1)
+
+
+        if not error:
+            if st.button("Process Payments"):
+                for idx, row in edited_df.iterrows():
+                    resident = curr_status.loc[curr_status[self.db_manager.uid] == row[self.db_manager.uid], "options"].squeeze()
+                    try:
+                        row["TransDate"] = pd.to_datetime(row["TransDate"])
+                        row["TransactionAmount"] = float(row["TransactionAmount"])
+
+                        if row[["TransDate", "TransactionAmount"]].isna().any():
+                            st.warning(f"Skipping Resident {resident} since Date or Amount is nan")
+                            continue
+
+                        self.db_manager.process_transaction(transaction=row, log_comments=row["Comments"])
+                        st.success(f"Payment Successful for Resident {resident}. Amount Received {row['TransactionAmount']}")
+                    except Exception as e:
+                        st.error(f"Error Updating payment for {resident}. {e}")
+                        st.code(traceback.format_exc())
+
 
         return
 
@@ -969,6 +1031,7 @@ def main():
         # Sidebar for navigation
         menu = [
             "Record Payment",
+            "Record Multiple Payments",
             "New Admission",
             "New Electricity Reading",
             "Update Resident Info",
@@ -998,6 +1061,8 @@ def main():
             system.update_electricity_record()
         elif choice == "Record Payment":
             system.record_payment()
+        elif choice=="Record Multiple Payments":
+            system.record_multiple_payments()
         elif choice == "Entry/Exit of Form":
             system.record_activity()
         elif choice == "Room Transfer":
