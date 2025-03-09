@@ -867,7 +867,6 @@ class ResidenceManagementStreamlit:
         edited_df["TransType"] = "payment"
         edited_df = edited_df.drop(['Residents'], axis=1)
 
-
         if not error:
             if st.button("Process Payments"):
                 for idx, row in edited_df.iterrows():
@@ -1028,25 +1027,47 @@ def main():
         db_manager = RDM.ResidentManager(confs=configs, db_handler=db_handler, data_manager=data_manager)  # Replace this with your actual db manager
         system = ResidenceManagementStreamlit(db_manager)
 
-        # Sidebar for navigation
-        menu = [
-            "Record Payment",
-            "Record Multiple Payments",
-            "New Admission",
-            "New Electricity Reading",
-            "Update Resident Info",
-            "Update Electricity Record",
-            "Entry/Exit of Form",
-            "Room Transfer",
-            "Calculate Rent",
-            "Record Additional Charges",
-            "Electricity Meter Change",
-            "Save a Copy",
-            "Undo Last change",
-            "View Current Tables",
-        ]
-        choice = st.sidebar.radio("Choose an Option", menu)
+        st.sidebar.markdown("### **Navigation Menu**")
 
+        menu_options = {
+            "💰 Payments and Charges": [
+                "Record Payment",
+                "Record Multiple Payments",
+                "Record Additional Charges",
+                "View Current Tables"
+            ],
+            "📋 Resident Management": [
+                "New Admission",
+                "Update Resident Info",
+                "View Current Tables"
+            ],
+            "⚡ Electricity Management": [
+                "New Electricity Reading",
+                "Update Electricity Record",
+                "Electricity Meter Change",
+                "View Current Tables"
+            ],
+            "📊 Operations": [
+                "Entry/Exit of Form",
+                "Room Transfer",
+                "Calculate Rent",
+                "View Current Tables"
+            ],
+            "🛠 Database Tools": [
+                "Save a Copy",
+                "Undo Last Change",
+                "View Current Tables"
+            ]
+        }
+
+        # Select Category
+        category = st.sidebar.selectbox("Select Category", list(menu_options.keys()))
+
+        # Select Action within the category
+        choice = st.sidebar.radio("Select Action", menu_options[category])
+
+
+        # Display Current Database Path
         st.write(f"Curretn Databse in Use -> {db_handler.get_latest_db_path(full_path=False)}")
 
         if choice == "New Admission":
@@ -1061,7 +1082,7 @@ def main():
             system.update_electricity_record()
         elif choice == "Record Payment":
             system.record_payment()
-        elif choice=="Record Multiple Payments":
+        elif choice == "Record Multiple Payments":
             system.record_multiple_payments()
         elif choice == "Entry/Exit of Form":
             system.record_activity()
@@ -1073,52 +1094,57 @@ def main():
             system.record_additional_charges()
         elif choice == "View Current Tables":
             system.view_current_tables()
-
         elif choice == "Electricity Meter Change":
             system.change_electricity_meter()
-
-        if choice == "Undo Last change":
-            st.subheader("Undo Recent Changes")
-            st.write("This will revert the database to the last backup available.")
-
-            files_list = os.listdir(str(db_manager.db_handler.db_path))
-            db_list = [
-                file.strip(db_manager.db_handler.db_extension)
-                for file in files_list
-                if (file.endswith(db_manager.db_handler.db_extension) and file.startswith(db_manager.db_handler.db_filename))
-            ]
-
-            st.write(db_list)
-            if "undo_warning_displayed" not in st.session_state:
-                st.session_state.undo_warning_displayed = False
-
-            if st.button("Undo Recent Changes"):
-                st.session_state.undo_warning_displayed = True
-
-            if st.session_state.undo_warning_displayed:
-                st.warning("Are you sure you want to undo recent changes? This action cannot be undone.")
-                col1, col2 = st.columns(2)
-
-                with col1:
-                    if st.button("Confirm Undo"):
-                        try:
-                            if db_handler.connection:
-                                db_handler.close()
-                            # Revert database to last backup
-                            db_manager.data_manager.revert_to_last_backup()
-                            st.success("Reverted to the last available backup successfully.")
-                            st.session_state.undo_warning_displayed = False
-                        except Exception as e:
-                            st.error(f"Failed to undo changes: {e}")
-
-                with col2:
-                    if st.button("Cancel"):
-                        st.session_state.undo_warning_displayed = False
+        if choice == "Undo Last Change":
+            handle_undo_change(db_manager=db_manager, db_handler=db_handler)
 
     elif authentication_status is False:
         st.error("Username or password is incorrect.")
     elif authentication_status is None:
         st.warning("Please enter your username and password.")
+
+
+def handle_undo_change(db_manager, db_handler):
+
+    st.subheader("Undo Recent Changes")
+    st.write("This will revert the database to the last backup available.")
+
+    files_list = os.listdir(str(db_manager.db_handler.db_path))
+    db_list = [
+        file.strip(db_manager.db_handler.db_extension)
+        for file in files_list
+        if (file.endswith(db_manager.db_handler.db_extension) and file.startswith(db_manager.db_handler.db_filename))
+    ]
+
+    st.write(db_list)
+    if "undo_warning_displayed" not in st.session_state:
+        st.session_state.undo_warning_displayed = False
+
+    if st.button("Undo Recent Changes"):
+        st.session_state.undo_warning_displayed = True
+
+    if st.session_state.undo_warning_displayed:
+        st.warning("Are you sure you want to undo recent changes? This action cannot be undone.")
+        col1, col2 = st.columns(2)
+
+        with col1:
+            if st.button("Confirm Undo"):
+                try:
+                    if db_handler.connection:
+                        db_handler.close()
+                    # Revert database to last backup
+                    db_manager.data_manager.revert_to_last_backup()
+                    st.success("Reverted to the last available backup successfully.")
+                    st.session_state.undo_warning_displayed = False
+                except Exception as e:
+                    st.error(f"Failed to undo changes: {e}")
+
+        with col2:
+            if st.button("Cancel"):
+                st.session_state.undo_warning_displayed = False
+
+    return
 
 
 if __name__ == "__main__":
