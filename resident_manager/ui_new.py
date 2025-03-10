@@ -108,6 +108,7 @@ class ResidenceManagementStreamlit:
         """Insert new electricity record"""
 
         st.header("New Electricity Record")
+        error = ""
 
         elect_table = self.db_manager.data_manager.load_electricity_table().sort_values(["Date"])
         curr_status = self.db_manager.data_manager.load_current_status()
@@ -119,6 +120,9 @@ class ResidenceManagementStreamlit:
 
         st.warning("Please enter date and time carefully in DD-MM-YYYY format")
 
+        st.markdown("---")
+        meter_groups = self.db_manager.confs.meter_groups
+
         prev_record = elect_table[elect_table["Date"] < reading_datetime].tail(1).squeeze()
         prev_record = curr_reading_status.combine_first(prev_record)
         prev_record["Date"] = np.nan
@@ -128,25 +132,14 @@ class ResidenceManagementStreamlit:
             prev_record.loc["Date"] = np.nan
 
         data = {"Date": reading_datetime}
-        rooms = self.db_manager.data_manager.load_current_status()
-        rooms = rooms[self.db_manager.room_id].unique()
 
-        for a_room in rooms:
-            data[a_room] = st.number_input(f"Enter Room {a_room} Meter Reading", value=prev_record[a_room])
+        input_Cols = st.columns(len(meter_groups.keys()))
 
-        data.update(
-            {
-                "Meter_1_2A": st.number_input("Enter Main Meter 1 Reading", value=prev_record["Meter_1_2A"]),
-                "Meter_2_2B": st.number_input("Enter Main Meter 2 Reading", value=prev_record["Meter_2_2B"]),
-                "Meter_3_1A": st.number_input("Enter Main Meter 3 Reading", value=prev_record["Meter_3_1A"]),
-                "Meter_4_1B": st.number_input("Enter Main Meter 4 Reading", value=prev_record["Meter_4_1B"]),
-                "Meter_5_GA": st.number_input("Enter Main Meter 5 Reading", value=prev_record["Meter_5_GA"]),
-                "Meter_6_GB": st.number_input("Enter Main Meter 6 Reading", value=prev_record["Meter_6_GB"]),
-                "Meter_7_Basement": st.number_input("Enter Main Meter 7 Reading", value=prev_record["Meter_7_Basement"]),
-                "Library": st.number_input("Enter Library Meter Reading", value=prev_record["Library"]),
-                "Solar": st.number_input("Enter Solar Meter Reading", value=prev_record["Solar"]),
-            }
-        )
+        for i, key in enumerate(meter_groups):
+            with input_Cols[i]:
+                st.subheader(key)
+                for meter in meter_groups[key]:
+                    data[meter] = st.number_input(f"Enter {meter} Meter Reading", value=prev_record.get(meter))
 
         data = pd.DataFrame([data])
 
@@ -170,6 +163,7 @@ class ResidenceManagementStreamlit:
                 st.success("Electricity reading inserted successfully.")
             except Exception as e:
                 st.error(f"Error: {e}")
+                st.code(traceback.format_exc())
 
     def update_resident_info(self):
         st.header("Change/Update Resident Info")

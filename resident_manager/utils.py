@@ -183,6 +183,7 @@ class DatabaseHandler:
         if not table_exists and if_exists != "replace":
             raise ValueError(f"Table: {table_name} does not exist and 'if_exists' is {if_exists}")
 
+
         df.to_sql(table_name, self.connection, if_exists=if_exists, index=index)
 
         return
@@ -377,7 +378,7 @@ class DataManager:
     def insert_electricity_record(self, input_df: pd.DataFrame, log_comments: Optional[str] = None):
         valid_input = self.prepare_and_validate_elect_input(input_df, check_if_exists_in_old=self.confs.date_cols_electricity_tbl)
         valid_input.columns = valid_input.columns.map(lambda col: f"Room_{col}" if col.isdigit() else col)
-        self.db_handler.insert_records(self.confs.electricity_tbl, valid_input, if_exists="append")
+        self.db_handler.insert_records(table_name=self.confs.electricity_tbl, df=valid_input, if_exists="append")
         return
 
     def insert_transaction(self, input_df: pd.DataFrame):
@@ -398,6 +399,7 @@ class DataManager:
     def edit_electricity_record(self, input_df: pd.DataFrame, update_date: dt.datetime, log_comments: Optional[str] = None):
         all_records = self.load_electricity_table()
         new_record = self.prepare_and_validate_elect_input(input_df, check_if_exists_in_old=None)
+
         update_date = pd.to_datetime(update_date)
 
         all_records = all_records[all_records["Date"] != update_date]
@@ -415,6 +417,7 @@ class DataManager:
             if col not in [self.uid]:
                 all_records.loc[all_records[self.uid].isin(new_record[self.uid]), col] = new_record[col].iloc[0]
 
+        all_records.columns = all_records.columns.map(lambda col: f"Room_{col}" if col.isdigit() else col)
         self.db_handler.insert_records(self.confs.residents_tbl, all_records, if_exists="replace")
         return True
 
