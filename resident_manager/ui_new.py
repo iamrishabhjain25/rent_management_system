@@ -12,6 +12,7 @@ import streamlit as st
 from utils import DatabaseHandler, DataManager
 import streamlit_authenticator as stauth
 import json
+import time
 
 st.set_page_config(layout="wide")
 
@@ -993,6 +994,58 @@ class ResidenceManagementStreamlit:
             with st.spinner("Processing, please wait"):
                 self.db_manager.db_handler.copy_and_refresh_db()
             st.success("Successfully created a copy of the databse. Please refresh")
+            time.sleep(0.5)
+            st.rerun()
+
+    def handle_multiple_undo(self):
+        st.subheader("Undo Multiple Changes")
+        st.write("This change cannot be reverted. Please move ahead with caution.")
+
+        residents_info = self.db_manager.data_manager.load_residents_info_table()
+        logs = self.db_manager.data_manager.load_logs()
+        logs = logs.sort_values(["Date"], ascending=False)
+        # logs["Date"] = logs["Date"].dt.strftime("%d-%b-%Y %H:%M")
+        logs = logs.merge(
+            residents_info[["EnrollmentID", "Name"]],
+            on=self.db_manager.uid,
+            how="left",
+        )
+        logs = logs[logs["DB_After"].notna()]
+        options_cols = [self.db_manager.bed_id, "Name", "Type", "DB_After"]
+        logs["options"] = logs[options_cols].fillna("/NA/").apply(" | ".join, axis=1)
+
+        option = st.selectbox("Choose State", options=logs["options"].tolist())
+        option_created_dt = logs.loc[logs["options"] == option, "DB_After"].squeeze()
+        option_created_dt = option_created_dt.strip(self.db_manager.confs.db_filename + "_").strip(self.db_manager.confs.db_extension)
+        option_created_dt = pd.to_datetime(option_created_dt, format=self.db_manager.confs.fl_name_dt_frmt)
+
+        if "undo_warning_displayed" not in st.session_state:
+            st.session_state.undo_warning_displayed = False
+
+        if st.button("Undo Changes"):
+            st.session_state.undo_warning_displayed = True
+
+        if st.session_state.undo_warning_displayed:
+            st.warning("Are you sure you want to undo recent changes? This action cannot be undone.")
+            col1, col2 = st.columns(2)
+
+            with col1:
+                if st.button("Confirm Undo"):
+                    try:
+                        if self.db_manager.db_handler.connection:
+                            self.db_manager.db_handler.close()
+                        # Revert database to last backup
+                        self.db_manager.db_handler.revert_to_given_backup(backup_time=option_created_dt)
+                        st.success("Reverted successfully.")
+                        st.session_state.undo_warning_displayed = False
+                        time.sleep(1)
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Failed to undo changes: {e}")
+
+            with col2:
+                if st.button("Cancel"):
+                    st.session_state.undo_warning_displayed = False
 
 
 # Main Streamlit UI
@@ -1050,6 +1103,7 @@ def main():
             "🛠 Database Tools": [
                 "Save a Copy",
                 "Undo Last Change",
+                "Multiple-Step Undo",
                 "View Current Tables"
             ]
         }
@@ -1090,9 +1144,10 @@ def main():
             system.view_current_tables()
         elif choice == "Electricity Meter Change":
             system.change_electricity_meter()
-        if choice == "Undo Last Change":
+        elif choice == "Undo Last Change":
             handle_undo_change(db_manager=db_manager, db_handler=db_handler)
-
+        elif choice == "Multiple-Step Undo":
+            system.handle_multiple_undo()
     elif authentication_status is False:
         st.error("Username or password is incorrect.")
     elif authentication_status is None:
@@ -1130,7 +1185,9 @@ def handle_undo_change(db_manager, db_handler):
                     # Revert database to last backup
                     db_manager.data_manager.revert_to_last_backup()
                     st.success("Reverted to the last available backup successfully.")
+                    time.sleep(0.5)
                     st.session_state.undo_warning_displayed = False
+                    st.rerun()
                 except Exception as e:
                     st.error(f"Failed to undo changes: {e}")
 

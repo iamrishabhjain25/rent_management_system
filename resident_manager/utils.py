@@ -242,6 +242,51 @@ class DatabaseHandler:
 
         return
 
+
+    def revert_to_given_backup(self, backup_time: pd.Timestamp, renamed_filename="Trashed_at", fl_name_dt_frmt: str = "%Y-%m-%d_%H-%M-%S"):
+
+        curr_datetime = dt.datetime.now().strftime(fl_name_dt_frmt)
+
+        files_list = os.listdir(str(self.db_path))
+        files_list = [file for file in files_list if (file.startswith(self.db_filename)) and (file.endswith(self.db_extension))]
+        db_list = [file.strip(self.db_extension) for file in files_list if (file.endswith(self.db_extension) and file.startswith(self.db_filename))]
+
+        if not db_list:
+            raise FileNotFoundError("No database files found in the directory")
+
+        if len(db_list) <= 2:
+            raise ValueError("Not enough backups founds to be reverted.")
+
+        df = pd.DataFrame(files_list, columns=["FileName"])
+        df["FileDateStr"] = df["FileName"].str.strip(self.db_filename + "_").str.strip(self.db_extension)
+        df["FileDate"] = pd.to_datetime(df["FileDateStr"], format=fl_name_dt_frmt)
+        df = df.sort_values(["FileDate"], ascending=False)
+
+        old_db_path = self.get_latest_db_path()
+        old_dir, old_filename = os.path.split(old_db_path)
+
+        try:
+            if self.connection:
+                self.close()
+            for file in df["FileName"].tolist():
+                file_date_str = file.strip(self.db_filename + "_").strip(self.db_extension)
+                file_date = pd.to_datetime(file_date_str, format=fl_name_dt_frmt)
+                if file_date > backup_time:
+                    old_file = os.path.join(old_dir, file)
+                    new_file = os.path.join(old_dir, f"{renamed_filename}_{curr_datetime}_{file}")
+                    os.rename(old_file, new_file)
+            self._restart_connection()
+        except sqlite3.Error as e:
+            raise RuntimeError(f"Failed to close database connection: {e}")
+        except OSError as e:
+            raise IOError(f"Failed to rename database file: {e}")
+        except Exception as e:
+            raise RuntimeError(f"Failed to revert to last backup: {e}")
+
+        return
+
+
+
     def close(self):
         """Close the connection"""
         return self.connection.close()
@@ -363,7 +408,9 @@ class DataManager:
         return status.loc[status[self.uid].isna(), self.bed_id].tolist()
 
     def load_logs(self):
-        return self.db_handler.load_table(self.confs.logs_tbl, parse_dates=self.confs.date_cols_logs_tbl)
+        df = self.db_handler.load_table(self.confs.logs_tbl, parse_dates=self.confs.date_cols_logs_tbl)
+        return df.sort_values(self.confs.date_cols_logs_tbl, ascending=False)
+
 
     def insert_log(self, input_df: pd.DataFrame):
         self.db_handler.insert_records(self.confs.logs_tbl, input_df, if_exists="append")
