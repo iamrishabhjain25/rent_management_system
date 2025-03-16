@@ -292,6 +292,11 @@ class ResidentManager:
         return exit_details, pd.DataFrame([data])
 
     def _entry_in_destination(self, input_row: pd.Series, src_exit_details: pd.DataFrame):
+        lastRentCalcDate = input_row["TransDate"] - dt.timedelta(days=1)
+
+        if pd.to_datetime(input_row["TransDate"]).days_in_month == 31:
+            lastRentCalcDate += dt.timedelta(days=1)
+
         data = {
             "TransDate": input_row["TransDate"],
             "RentThruDate": np.nan,
@@ -303,12 +308,16 @@ class ResidentManager:
             "PrevDueAmount": (src_exit_details["TotalAmountDue"]).squeeze(),
             "AdditionalCharges": 0.0,
             "Comments": input_row["Comments"],
-            "LastRentCalcDate": input_row["TransDate"] - dt.timedelta(days=1),
+            "LastRentCalcDate": lastRentCalcDate,
         }
         self._process_resident_entry(row=pd.Series(data), copy_db=False)
         return
 
     def _entry_in_source(self, input_row: pd.Series, desti_exit_details: pd.DataFrame):
+        lastRentCalcDate = input_row["TransDate"] - dt.timedelta(days=1)
+
+        if pd.to_datetime(input_row["TransDate"]).days_in_month == 31:
+            lastRentCalcDate += dt.timedelta(days=1)
         data = {
             "TransDate": input_row["TransDate"],
             "RentThruDate": np.nan,
@@ -320,7 +329,7 @@ class ResidentManager:
             "PrevDueAmount": (desti_exit_details["TotalAmountDue"] - desti_exit_details["AdditionalCharges"]).squeeze(),
             "AdditionalCharges": desti_exit_details["AdditionalCharges"].squeeze(),
             "Comments": input_row["Comments"],
-            "LastRentCalcDate": input_row["TransDate"] - dt.timedelta(days=1),
+            "LastRentCalcDate": lastRentCalcDate,
         }
 
         return self._process_resident_entry(row=pd.Series(data), copy_db=False)
