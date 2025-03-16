@@ -830,12 +830,14 @@ class ResidenceManagementStreamlit:
         resident_uids = curr_status[curr_status["options"].notna()][self.db_manager.uid].values
         resident_bedid = curr_status[curr_status["options"].notna()][self.db_manager.bed_id].values
         resident_room_id = curr_status[curr_status["options"].notna()][self.db_manager.room_id].values
+        resident_prev_dues = curr_status[curr_status["options"].notna()]["PrevDueAmount"].values
 
 
         # Creating a DataFrame for payments
         data = pd.DataFrame({
             "Residents": resident_options,
             f"{self.db_manager.uid}": resident_uids,
+            "PrevDueAmount": resident_prev_dues,
             "TransDate": [None] * len(resident_options),
             "TransactionAmount": [0] * len(resident_options),
             "Comments": [""] * len(resident_options)
@@ -851,7 +853,7 @@ class ResidenceManagementStreamlit:
                 "TransactionAmount": st.column_config.NumberColumn("Amount", min_value=0, default=None),
                 "Comments": st.column_config.TextColumn("Comments")
             },
-            disabled=["Residents", f"{self.db_manager.uid}"],
+            disabled=["Residents", f"{self.db_manager.uid}", "PrevDueAmount"],
             hide_index=True,
             height=3500,
             width=1000
@@ -860,7 +862,7 @@ class ResidenceManagementStreamlit:
         edited_df[self.db_manager.bed_id] = resident_bedid
         edited_df[self.db_manager.room_id] = resident_room_id
         edited_df["TransType"] = "payment"
-        edited_df = edited_df.drop(['Residents'], axis=1)
+        edited_df = edited_df.drop(['Residents', "PrevDueAmount"], axis=1)
 
         if not error:
             if st.button("Process Payments"):
