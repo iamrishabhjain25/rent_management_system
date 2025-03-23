@@ -635,7 +635,7 @@ class ResidenceManagementStreamlit:
         cursor = self.db_manager.data_manager.db_handler.connection.cursor()
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
         tables = [tbl[0] for tbl in cursor.fetchall()]
-        tables = ["status"] + [tbl for tbl in tables if tbl not in ["status"]]
+        tables = ["logs"] + [tbl for tbl in tables if tbl not in ["logs"]]
         df = None
 
         table_name = st.selectbox("Choose Table name to load", options=tables)
@@ -1104,24 +1104,28 @@ def main():
                 "Record Payment",
                 "Record Multiple Payments",
                 "Record Additional Charges",
-                "View Current Tables"
+                "View Current Tables",
+                "Undo Last Change",
             ],
             "📋 Resident Management": [
                 "New Admission",
                 "Update Resident Info",
-                "View Current Tables"
+                "View Current Tables",
+                "Undo Last Change",
             ],
             "⚡ Electricity Management": [
                 "New Electricity Reading",
                 "Update Electricity Record",
                 "Electricity Meter Change",
-                "View Current Tables"
+                "View Current Tables",
+                "Undo Last Change",
             ],
             "📊 Operations": [
                 "Entry/Exit of Form",
                 "Room Transfer",
                 "Calculate Rent",
-                "View Current Tables"
+                "View Current Tables",
+                "Undo Last Change",
             ],
             "🛠 Database Tools": [
                 "Save a Copy",
