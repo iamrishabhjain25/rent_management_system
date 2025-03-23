@@ -141,6 +141,16 @@ class ResidenceManagementStreamlit:
                 st.subheader(key)
                 for meter in meter_groups[key]:
                     data[meter] = st.number_input(f"Enter {meter} Meter Reading", value=prev_record.get(meter))
+                sum_meter_group = round(sum([data[meter] for meter in meter_groups[key]]),2)
+                with st.container():
+                    st.markdown(f"**{key} Total Sum:**", unsafe_allow_html=True)
+                    st.write(f"<h3 style='text-align: left;'>{sum_meter_group}</h3>", unsafe_allow_html=True)
+
+        grand_total = round(sum([data[idx] for idx in data.keys() if idx!="Date"]),2)
+
+        with st.container():
+            st.markdown(f"**Grand Total:**", unsafe_allow_html=True)
+            st.write(f"<h3 style='text-align: left;'>{grand_total}</h3>", unsafe_allow_html=True)
 
         data = pd.DataFrame([data])
 
@@ -315,6 +325,17 @@ class ResidenceManagementStreamlit:
                     st.subheader(key)
                     for meter in meter_groups[key]:
                         updated_data[meter] = st.number_input(f"Enter {meter} Meter Reading", value=prev_record.get(meter))
+
+                    sum_meter_group = round(sum([updated_data[meter] for meter in meter_groups[key]]))
+                    with st.container():
+                        st.markdown(f"**{key} Total Sum:**", unsafe_allow_html=True)
+                        st.write(f"<h3 style='text-align: left;'>{sum_meter_group}</h3>", unsafe_allow_html=True)
+
+            grand_total = round(sum([updated_data[idx] for idx in updated_data.keys() if idx!="Date"]))
+            with st.container():
+                st.markdown(f"**Grand Total:**", unsafe_allow_html=True)
+                st.write(f"<h3 style='text-align: left;'>{grand_total}</h3>", unsafe_allow_html=True)
+
 
             updated_data_df = pd.DataFrame([updated_data])
 
